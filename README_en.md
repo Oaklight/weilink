@@ -1,9 +1,9 @@
 # WeiLink
 
-[![PyPI](https://img.shields.io/pypi/v/weilink)](https://pypi.org/project/weilink/)
-[![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink)](https://github.com/Oaklight/weilink/releases)
+[![PyPI](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
+[![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink?color=green)](https://github.com/Oaklight/weilink/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/pypi/pyversions/weilink)](https://pypi.org/project/weilink/)
+[![Python](https://img.shields.io/pypi/pyversions/weilink?color=green)](https://pypi.org/project/weilink/)
 
 Lightweight Python SDK for the WeChat iLink Bot protocol.
 
@@ -81,6 +81,7 @@ send()   →  Reply to a user (context_token auto-attached)
 ## Acknowledgments
 
 - Terminal QR code rendering based on [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) (MIT License)
+- AES-128 cipher core derived from [bozhu/AES-Python](https://github.com/bozhu/AES-Python) (MIT License), rewritten for Python 3 with ECB mode and PKCS7 padding added
 
 ## License
 

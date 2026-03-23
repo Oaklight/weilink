@@ -1,9 +1,9 @@
 # WeiLink
 
-[![PyPI](https://img.shields.io/pypi/v/weilink)](https://pypi.org/project/weilink/)
-[![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink)](https://github.com/Oaklight/weilink/releases)
+[![PyPI](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
+[![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink?color=green)](https://github.com/Oaklight/weilink/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/pypi/pyversions/weilink)](https://pypi.org/project/weilink/)
+[![Python](https://img.shields.io/pypi/pyversions/weilink?color=green)](https://pypi.org/project/weilink/)
 
 轻量级 Python SDK，用于微信 iLink Bot 协议。
 
@@ -81,6 +81,7 @@ send()   →  回复消息（自动关联 context_token）
 ## 致谢
 
 - QR 码终端渲染基于 [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator)（MIT 许可）
+- AES-128 密码核心源自 [bozhu/AES-Python](https://github.com/bozhu/AES-Python)（MIT 许可），已重写为 Python 3 并新增 ECB 模式和 PKCS7 填充
 
 ## License
 
