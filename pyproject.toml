@@ -33,6 +33,9 @@ test = [
     "pytest-cov>=4.0.0",
     "coverage>=7.0.0",
 ]
+qr = [
+    "segno>=1.6.0",
+]
 
 [project.urls]
 Documentation = "https://weilink.readthedocs.io"

@@ -9,9 +9,11 @@ from __future__ import annotations
 import base64
 import json
 import random
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from typing import Any
 
 # iLink API endpoints
@@ -162,7 +164,7 @@ def poll_qr_status(qrcode: str, base_url: str = BASE_URL) -> dict[str, Any]:
     Returns:
         Dict with 'status', and on success: 'bot_token', 'baseurl'.
     """
-    return get(EP_QR_STATUS, params={"qrcode": qrcode}, base_url=base_url, timeout=30.0)
+    return get(EP_QR_STATUS, params={"qrcode": qrcode}, base_url=base_url, timeout=40.0)
 
 
 def get_updates(cursor: str, token: str, base_url: str = BASE_URL) -> dict[str, Any]:
@@ -199,9 +201,12 @@ def send_message(
         token: Bot bearer token.
         base_url: API base URL.
     """
+    client_id = f"weilink:{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
     body = {
         "msg": {
+            "from_user_id": "",
             "to_user_id": to_user,
+            "client_id": client_id,
             "message_type": 2,  # BOT
             "message_state": 2,  # FINISH
             "context_token": context_token,

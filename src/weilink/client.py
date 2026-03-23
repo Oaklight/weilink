@@ -111,25 +111,27 @@ class WeiLink:
         # Step 1: Get QR code
         qr_resp = proto.get_qr_code()
         qrcode = qr_resp["qrcode"]
+        qr_url = qr_resp.get("qrcode_img_content", "")
 
-        # Display QR code URL for scanning
-        qr_url = f"https://login.weixin.qq.com/qrcode/{qrcode}"
-        print(f"\nScan this QR code with WeChat:\n{qr_url}\n")
+        self._display_qr(qr_url)
 
-        # Try to display QR in terminal if qrcode_img_content is available
-        if qr_resp.get("qrcode_img_content"):
-            print("(QR image content available, scan the URL above)")
-
-        # Step 2: Poll for scan confirmation
+        # Step 2: Poll for scan confirmation (5 min deadline)
+        deadline = time.monotonic() + 300
         print("Waiting for scan...", end="", flush=True)
-        while True:
-            status_resp = proto.poll_qr_status(qrcode)
+        while time.monotonic() < deadline:
+            try:
+                status_resp = proto.poll_qr_status(qrcode)
+            except (proto.ILinkError, TimeoutError, OSError):
+                # Long-poll timeout is normal, retry
+                print(".", end="", flush=True)
+                continue
+
             status = status_resp.get("status", "")
 
             if status == "confirmed":
-                bot_token = status_resp["bot_token"]
+                bot_token = status_resp.get("bot_token", "")
                 base_url = status_resp.get("baseurl", proto.BASE_URL)
-                bot_id = status_resp.get("bot_id", "")
+                bot_id = status_resp.get("ilink_bot_id", "")
 
                 self._bot_info = BotInfo(
                     bot_id=bot_id,
@@ -141,11 +143,23 @@ class WeiLink:
                 print(f"\nLogin successful! Bot ID: {bot_id}")
                 return self._bot_info
 
-            if status == "expired":
-                raise proto.ILinkError(ret=-1, errmsg="QR code expired, please retry")
+            if status == "scaned":
+                print("\nScanned, confirm on your phone...", end="", flush=True)
+                continue
 
+            if status == "expired":
+                print("\nQR code expired, refreshing...")
+                qr_resp = proto.get_qr_code()
+                qrcode = qr_resp["qrcode"]
+                qr_url = qr_resp.get("qrcode_img_content", "")
+                self._display_qr(qr_url)
+                print("Waiting for scan...", end="", flush=True)
+                continue
+
+            # status == "wait" or unknown
             print(".", end="", flush=True)
-            time.sleep(1.5)
+
+        raise proto.ILinkError(ret=-1, errmsg="QR code login timed out (5 min)")
 
     def recv(self, timeout: float = 35.0) -> list[Message]:
         """Receive pending messages via long-polling.
@@ -219,13 +233,19 @@ class WeiLink:
             return False
 
         try:
-            proto.send_message(
+            resp = proto.send_message(
                 to_user=to,
                 text=text,
                 context_token=ctx_token,
                 token=self._bot_info.token,
                 base_url=self._bot_info.base_url,
             )
+            ret = resp.get("ret", 0)
+            if ret != 0:
+                logger.warning(
+                    "send to %s returned ret=%s: %s", to, ret, resp.get("errmsg", "")
+                )
+                return False
             return True
         except proto.ILinkError as e:
             logger.error("Failed to send message to %s: %s", to, e)
@@ -256,6 +276,38 @@ class WeiLink:
 
     def __exit__(self, *args: Any) -> None:
         self.close()
+
+    @staticmethod
+    def _display_qr(url: str) -> None:
+        """Display QR code in terminal, with fallback to URL."""
+        if not url:
+            print("\n(No QR code URL received from server)\n")
+            return
+
+        print(f"\nScan this QR code with WeChat:\n{url}\n")
+
+        # Try segno (pure Python, no deps)
+        try:
+            import segno
+
+            qr = segno.make(url)
+            qr.terminal(compact=True)
+            return
+        except ImportError:
+            pass
+
+        # Try qrcode
+        try:
+            import qrcode as qr_lib
+
+            q = qr_lib.QRCode(border=1)
+            q.add_data(url)
+            q.print_ascii(invert=True)
+            return
+        except ImportError:
+            pass
+
+        print("(Install 'segno' or 'qrcode' for terminal QR display)\n")
 
     def _ensure_connected(self) -> None:
         """Raise if not logged in."""
