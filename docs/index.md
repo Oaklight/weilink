@@ -1,9 +1,7 @@
 # WeiLink
 
-[![PyPI](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
+[![PyPI version](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
 [![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink?color=green)](https://github.com/Oaklight/weilink/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python](https://img.shields.io/pypi/pyversions/weilink?color=green)](https://pypi.org/project/weilink/)
 
 Lightweight Python SDK for the WeChat iLink Bot protocol.
 
