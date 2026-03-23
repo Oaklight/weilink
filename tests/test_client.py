@@ -138,12 +138,110 @@ class TestParseMessage:
                 "from_user_id": "user@im.wechat",
                 "message_type": 1,
                 "context_token": "ctx_img",
-                "item_list": [{"type": 2, "image_item": {"media": {"aes_key": "abc"}}}],
+                "item_list": [
+                    {
+                        "type": 2,
+                        "image_item": {
+                            "media": {
+                                "encrypt_query_param": "param123",
+                                "aes_key": "abc",
+                                "encrypt_type": 1,
+                            },
+                            "url": "https://example.com/img.jpg",
+                            "thumb_width": 100,
+                            "thumb_height": 200,
+                        },
+                    }
+                ],
             }
             msg = wl._parse_message(raw)
             assert msg is not None
             assert msg.msg_type == MessageType.IMAGE
             assert msg.text is None
+            assert msg.image is not None
+            assert msg.image.media.encrypt_query_param == "param123"
+            assert msg.image.media.aes_key == "abc"
+            assert msg.image.url == "https://example.com/img.jpg"
+            assert msg.image.thumb_width == 100
+
+    def test_parse_voice_message(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "message_type": 1,
+                "context_token": "ctx_voice",
+                "item_list": [
+                    {
+                        "type": 3,
+                        "voice_item": {
+                            "media": {"aes_key": "voicekey"},
+                            "playtime": 5,
+                            "text": "hello from voice",
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.msg_type == MessageType.VOICE
+            assert msg.voice is not None
+            assert msg.voice.playtime == 5
+            assert msg.voice.text == "hello from voice"
+
+    def test_parse_file_message(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "message_type": 1,
+                "context_token": "ctx_file",
+                "item_list": [
+                    {
+                        "type": 4,
+                        "file_item": {
+                            "media": {"aes_key": "filekey"},
+                            "file_name": "doc.pdf",
+                            "len": "12345",
+                            "md5": "abc123",
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.msg_type == MessageType.FILE
+            assert msg.file is not None
+            assert msg.file.file_name == "doc.pdf"
+            assert msg.file.file_size == "12345"
+            assert msg.file.md5 == "abc123"
+
+    def test_parse_video_message(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "message_type": 1,
+                "context_token": "ctx_video",
+                "item_list": [
+                    {
+                        "type": 5,
+                        "video_item": {
+                            "media": {"aes_key": "vidkey"},
+                            "play_length": 30,
+                            "video_md5": "vid123",
+                            "thumb_width": 640,
+                            "thumb_height": 480,
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.msg_type == MessageType.VIDEO
+            assert msg.video is not None
+            assert msg.video.play_length == 30
+            assert msg.video.thumb_width == 640
 
     def test_parse_empty_from(self):
         with tempfile.TemporaryDirectory() as tmpdir:

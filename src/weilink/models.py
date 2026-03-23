@@ -31,6 +31,15 @@ class MessageState(IntEnum):
     FINISH = 2
 
 
+class UploadMediaType(IntEnum):
+    """Media type codes used in the getuploadurl endpoint."""
+
+    IMAGE = 1
+    VIDEO = 2
+    FILE = 3
+    VOICE = 4
+
+
 @dataclass(frozen=True)
 class BotInfo:
     """Bot credentials obtained after QR code login.
@@ -47,13 +56,100 @@ class BotInfo:
 
 
 @dataclass(frozen=True)
+class MediaInfo:
+    """CDN media reference for encrypted files.
+
+    Attributes:
+        encrypt_query_param: CDN download query parameter.
+        aes_key: AES-128-ECB key (hex or base64 encoded).
+        encrypt_type: Encryption type identifier (typically 1).
+    """
+
+    encrypt_query_param: str = ""
+    aes_key: str = ""
+    encrypt_type: int = 0
+
+
+@dataclass(frozen=True)
+class ImageInfo:
+    """Image metadata from a received message.
+
+    Attributes:
+        media: CDN media reference for the full-size image.
+        url: Direct image URL (may be empty).
+        thumb_width: Thumbnail width in pixels.
+        thumb_height: Thumbnail height in pixels.
+    """
+
+    media: MediaInfo = field(default_factory=MediaInfo)
+    url: str = ""
+    thumb_width: int = 0
+    thumb_height: int = 0
+
+
+@dataclass(frozen=True)
+class VoiceInfo:
+    """Voice message metadata from a received message.
+
+    Attributes:
+        media: CDN media reference for the voice file.
+        playtime: Duration in seconds.
+        text: Voice-to-text transcription (may be empty).
+    """
+
+    media: MediaInfo = field(default_factory=MediaInfo)
+    playtime: int = 0
+    text: str = ""
+
+
+@dataclass(frozen=True)
+class FileInfo:
+    """File attachment metadata from a received message.
+
+    Attributes:
+        media: CDN media reference for the file.
+        file_name: Original file name.
+        file_size: File size as string.
+        md5: File MD5 checksum.
+    """
+
+    media: MediaInfo = field(default_factory=MediaInfo)
+    file_name: str = ""
+    file_size: str = ""
+    md5: str = ""
+
+
+@dataclass(frozen=True)
+class VideoInfo:
+    """Video metadata from a received message.
+
+    Attributes:
+        media: CDN media reference for the video.
+        play_length: Duration in seconds.
+        video_md5: Video file MD5 checksum.
+        thumb_width: Thumbnail width in pixels.
+        thumb_height: Thumbnail height in pixels.
+    """
+
+    media: MediaInfo = field(default_factory=MediaInfo)
+    play_length: int = 0
+    video_md5: str = ""
+    thumb_width: int = 0
+    thumb_height: int = 0
+
+
+@dataclass(frozen=True)
 class Message:
     """A received WeChat message.
 
     Attributes:
         from_user: Sender identifier (xxx@im.wechat).
-        text: Text content, if any.
         msg_type: Content type (TEXT, IMAGE, VOICE, FILE, VIDEO).
+        text: Text content, if any.
+        image: Image metadata, if msg_type is IMAGE.
+        voice: Voice metadata, if msg_type is VOICE.
+        file: File metadata, if msg_type is FILE.
+        video: Video metadata, if msg_type is VIDEO.
         timestamp: Creation time in milliseconds.
         message_id: Unique message identifier.
         context_token: Opaque token required for replying (managed internally).
@@ -62,6 +158,10 @@ class Message:
     from_user: str
     msg_type: MessageType = MessageType.TEXT
     text: str | None = None
+    image: ImageInfo | None = None
+    voice: VoiceInfo | None = None
+    file: FileInfo | None = None
+    video: VideoInfo | None = None
     timestamp: int = 0
     message_id: int | None = None
     context_token: str = ""

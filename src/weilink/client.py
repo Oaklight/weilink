@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import time
@@ -9,7 +10,17 @@ from pathlib import Path
 from typing import Any
 
 from weilink import _protocol as proto
-from weilink.models import BotInfo, Message, MessageType
+from weilink.models import (
+    BotInfo,
+    FileInfo,
+    ImageInfo,
+    MediaInfo,
+    Message,
+    MessageType,
+    UploadMediaType,
+    VideoInfo,
+    VoiceInfo,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -267,6 +278,107 @@ class WeiLink:
         """
         self._set_typing(to, status=2)
 
+    def download(self, msg: Message) -> bytes:
+        """Download media from a received message.
+
+        Supports IMAGE, VOICE, FILE, and VIDEO message types.
+        Requires ``weilink[media]`` (pycryptodome).
+
+        Args:
+            msg: A received Message with media content.
+
+        Returns:
+            Decrypted file bytes.
+
+        Raises:
+            ImportError: If pycryptodome is not installed.
+            ValueError: If the message has no downloadable media.
+        """
+        from weilink._cdn import download_media
+
+        media = self._get_media_info(msg)
+        if not media or not media.encrypt_query_param:
+            raise ValueError(
+                f"Message has no downloadable media (type={msg.msg_type.name})"
+            )
+
+        return download_media(media.encrypt_query_param, media.aes_key)
+
+    def send_image(self, to: str, image_data: bytes) -> bool:
+        """Send an image to a user.
+
+        Requires ``weilink[media]`` (pycryptodome).
+
+        Args:
+            to: Target user ID (xxx@im.wechat).
+            image_data: Raw image bytes (JPEG, PNG, etc.).
+
+        Returns:
+            True if sent successfully.
+
+        Raises:
+            ImportError: If pycryptodome is not installed.
+            RuntimeError: If not logged in.
+        """
+        return self._send_media(to, image_data, UploadMediaType.IMAGE, "image_item")
+
+    def send_voice(self, to: str, voice_data: bytes) -> bool:
+        """Send a voice message to a user.
+
+        Requires ``weilink[media]`` (pycryptodome).
+
+        Args:
+            to: Target user ID (xxx@im.wechat).
+            voice_data: Raw voice file bytes.
+
+        Returns:
+            True if sent successfully.
+
+        Raises:
+            ImportError: If pycryptodome is not installed.
+            RuntimeError: If not logged in.
+        """
+        return self._send_media(to, voice_data, UploadMediaType.VOICE, "voice_item")
+
+    def send_file(self, to: str, file_data: bytes, file_name: str) -> bool:
+        """Send a file to a user.
+
+        Requires ``weilink[media]`` (pycryptodome).
+
+        Args:
+            to: Target user ID (xxx@im.wechat).
+            file_data: Raw file bytes.
+            file_name: Original file name.
+
+        Returns:
+            True if sent successfully.
+
+        Raises:
+            ImportError: If pycryptodome is not installed.
+            RuntimeError: If not logged in.
+        """
+        return self._send_media(
+            to, file_data, UploadMediaType.FILE, "file_item", file_name=file_name
+        )
+
+    def send_video(self, to: str, video_data: bytes) -> bool:
+        """Send a video to a user.
+
+        Requires ``weilink[media]`` (pycryptodome).
+
+        Args:
+            to: Target user ID (xxx@im.wechat).
+            video_data: Raw video file bytes.
+
+        Returns:
+            True if sent successfully.
+
+        Raises:
+            ImportError: If pycryptodome is not installed.
+            RuntimeError: If not logged in.
+        """
+        return self._send_media(to, video_data, UploadMediaType.VIDEO, "video_item")
+
     def close(self) -> None:
         """Save state and clean up."""
         self._save_state()
@@ -301,9 +413,14 @@ class WeiLink:
         if not from_user:
             return None
 
-        # Extract text from item_list
+        # Extract content from item_list
         text: str | None = None
+        image: ImageInfo | None = None
+        voice: VoiceInfo | None = None
+        file: FileInfo | None = None
+        video: VideoInfo | None = None
         msg_type = MessageType.TEXT
+
         items = raw.get("item_list", [])
         if items:
             first = items[0]
@@ -316,15 +433,182 @@ class WeiLink:
 
             if item_type == 1 and first.get("text_item"):
                 text = first["text_item"].get("text")
+            elif item_type == 2 and first.get("image_item"):
+                image = self._parse_image_item(first["image_item"])
+            elif item_type == 3 and first.get("voice_item"):
+                voice = self._parse_voice_item(first["voice_item"])
+            elif item_type == 4 and first.get("file_item"):
+                file = self._parse_file_item(first["file_item"])
+            elif item_type == 5 and first.get("video_item"):
+                video = self._parse_video_item(first["video_item"])
 
         return Message(
             from_user=from_user,
             text=text,
             msg_type=msg_type,
+            image=image,
+            voice=voice,
+            file=file,
+            video=video,
             timestamp=raw.get("create_time_ms", 0),
             message_id=raw.get("message_id"),
             context_token=raw.get("context_token", ""),
         )
+
+    @staticmethod
+    def _parse_media_info(raw: dict[str, Any]) -> MediaInfo:
+        """Parse a CDN media reference from a raw dict."""
+        return MediaInfo(
+            encrypt_query_param=raw.get("encrypt_query_param", ""),
+            aes_key=raw.get("aes_key", ""),
+            encrypt_type=raw.get("encrypt_type", 0),
+        )
+
+    @classmethod
+    def _parse_image_item(cls, raw: dict[str, Any]) -> ImageInfo:
+        """Parse an image_item dict into ImageInfo."""
+        media = cls._parse_media_info(raw.get("media", {}))
+        return ImageInfo(
+            media=media,
+            url=raw.get("url", ""),
+            thumb_width=raw.get("thumb_width", 0),
+            thumb_height=raw.get("thumb_height", 0),
+        )
+
+    @classmethod
+    def _parse_voice_item(cls, raw: dict[str, Any]) -> VoiceInfo:
+        """Parse a voice_item dict into VoiceInfo."""
+        media = cls._parse_media_info(raw.get("media", {}))
+        return VoiceInfo(
+            media=media,
+            playtime=raw.get("playtime", 0),
+            text=raw.get("text", ""),
+        )
+
+    @classmethod
+    def _parse_file_item(cls, raw: dict[str, Any]) -> FileInfo:
+        """Parse a file_item dict into FileInfo."""
+        media = cls._parse_media_info(raw.get("media", {}))
+        return FileInfo(
+            media=media,
+            file_name=raw.get("file_name", ""),
+            file_size=str(raw.get("len", "")),
+            md5=raw.get("md5", ""),
+        )
+
+    @classmethod
+    def _parse_video_item(cls, raw: dict[str, Any]) -> VideoInfo:
+        """Parse a video_item dict into VideoInfo."""
+        media = cls._parse_media_info(raw.get("media", {}))
+        return VideoInfo(
+            media=media,
+            play_length=raw.get("play_length", 0),
+            video_md5=raw.get("video_md5", ""),
+            thumb_width=raw.get("thumb_width", 0),
+            thumb_height=raw.get("thumb_height", 0),
+        )
+
+    @staticmethod
+    def _get_media_info(msg: Message) -> MediaInfo | None:
+        """Extract MediaInfo from a message based on its type."""
+        if msg.msg_type == MessageType.IMAGE and msg.image:
+            return msg.image.media
+        if msg.msg_type == MessageType.VOICE and msg.voice:
+            return msg.voice.media
+        if msg.msg_type == MessageType.FILE and msg.file:
+            return msg.file.media
+        if msg.msg_type == MessageType.VIDEO and msg.video:
+            return msg.video.media
+        return None
+
+    def _send_media(
+        self,
+        to: str,
+        file_data: bytes,
+        media_type: UploadMediaType,
+        item_key: str,
+        file_name: str | None = None,
+    ) -> bool:
+        """Upload and send a media message.
+
+        Args:
+            to: Target user ID.
+            file_data: Raw file bytes.
+            media_type: Upload media type enum value.
+            item_key: Item key in message body (e.g. "image_item").
+            file_name: Original file name (for file_item only).
+
+        Returns:
+            True if sent successfully.
+        """
+        from weilink._cdn import upload_media
+
+        self._ensure_connected()
+        assert self._bot_info is not None
+
+        ctx_token = self._context_tokens.get(to)
+        if not ctx_token:
+            logger.warning("No context_token for user %s, cannot send", to)
+            return False
+
+        def _get_url(**kwargs: Any) -> dict[str, Any]:
+            assert self._bot_info is not None
+            return proto.get_upload_url(
+                **kwargs,
+                token=self._bot_info.token,
+                base_url=self._bot_info.base_url,
+            )
+
+        try:
+            uploaded = upload_media(file_data, media_type.value, to, _get_url)
+
+            # Build the media item
+            # aes_key in protocol is base64(hex_string_as_ascii)
+            aes_key_b64 = base64.b64encode(uploaded.aes_key_hex.encode()).decode()
+            media_dict: dict[str, Any] = {
+                "media": {
+                    "encrypt_query_param": uploaded.download_param,
+                    "aes_key": aes_key_b64,
+                    "encrypt_type": 1,
+                }
+            }
+            if item_key == "image_item":
+                media_dict["mid_size"] = uploaded.cipher_size
+            elif item_key == "video_item":
+                media_dict["video_size"] = uploaded.cipher_size
+            if file_name and item_key == "file_item":
+                media_dict["file_name"] = file_name
+                media_dict["len"] = str(uploaded.file_size)
+
+            item_type_map = {
+                "image_item": 2,
+                "voice_item": 3,
+                "file_item": 4,
+                "video_item": 5,
+            }
+            item_list = [{"type": item_type_map[item_key], item_key: media_dict}]
+            logger.debug("send media item_list: %s", item_list)
+
+            resp = proto.send_media_message(
+                to_user=to,
+                item_list=item_list,
+                context_token=ctx_token,
+                token=self._bot_info.token,
+                base_url=self._bot_info.base_url,
+            )
+            ret = resp.get("ret", 0)
+            if ret != 0:
+                logger.warning(
+                    "send media to %s returned ret=%s: %s",
+                    to,
+                    ret,
+                    resp.get("errmsg", ""),
+                )
+                return False
+            return True
+        except proto.ILinkError as e:
+            logger.error("Failed to send media to %s: %s", to, e)
+            return False
 
     def _set_typing(self, to: str, status: int) -> None:
         """Set or cancel typing indicator."""

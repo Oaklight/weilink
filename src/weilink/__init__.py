@@ -3,11 +3,25 @@
 __version__ = "0.1.0"
 
 from weilink.client import WeiLink
-from weilink.models import BotInfo, Message, MessageType
+from weilink.models import (
+    BotInfo,
+    FileInfo,
+    ImageInfo,
+    MediaInfo,
+    Message,
+    MessageType,
+    VideoInfo,
+    VoiceInfo,
+)
 
 __all__ = [
     "WeiLink",
     "BotInfo",
+    "FileInfo",
+    "ImageInfo",
+    "MediaInfo",
     "Message",
     "MessageType",
+    "VideoInfo",
+    "VoiceInfo",
 ]

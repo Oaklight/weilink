@@ -22,6 +22,7 @@ EP_QR_CODE = "/ilink/bot/get_bot_qrcode"
 EP_QR_STATUS = "/ilink/bot/get_qrcode_status"
 EP_GET_UPDATES = "/ilink/bot/getupdates"
 EP_SEND_MESSAGE = "/ilink/bot/sendmessage"
+EP_GET_UPLOAD_URL = "/ilink/bot/getuploadurl"
 EP_GET_CONFIG = "/ilink/bot/getconfig"
 EP_SEND_TYPING = "/ilink/bot/sendtyping"
 
@@ -259,3 +260,76 @@ def send_typing(
         "status": status,
     }
     return post(EP_SEND_TYPING, body, token, base_url, timeout=10.0)
+
+
+def send_media_message(
+    to_user: str,
+    item_list: list[dict[str, Any]],
+    context_token: str,
+    token: str,
+    base_url: str = BASE_URL,
+) -> dict[str, Any]:
+    """Send a message with arbitrary item_list (text, image, voice, file, video).
+
+    Args:
+        to_user: Target user ID (xxx@im.wechat).
+        item_list: List of item dicts, e.g. [{"type": 2, "image_item": {...}}].
+        context_token: Context token from a received message.
+        token: Bot bearer token.
+        base_url: API base URL.
+    """
+    client_id = f"weilink:{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+    body = {
+        "msg": {
+            "from_user_id": "",
+            "to_user_id": to_user,
+            "client_id": client_id,
+            "message_type": 2,  # BOT
+            "message_state": 2,  # FINISH
+            "context_token": context_token,
+            "item_list": item_list,
+        },
+        "base_info": {"channel_version": CHANNEL_VERSION},
+    }
+    return post(EP_SEND_MESSAGE, body, token, base_url, timeout=10.0)
+
+
+def get_upload_url(
+    file_md5: str,
+    file_size: int,
+    cipher_size: int,
+    media_type: int,
+    to_user_id: str,
+    filekey: str,
+    aes_key_hex: str,
+    token: str,
+    base_url: str = BASE_URL,
+) -> dict[str, Any]:
+    """Get a pre-signed CDN upload URL.
+
+    Args:
+        file_md5: MD5 hex digest of the original file.
+        file_size: Original file size in bytes.
+        cipher_size: Encrypted file size in bytes.
+        media_type: Upload media type (1=IMAGE, 2=VIDEO, 3=FILE, 4=VOICE).
+        to_user_id: Target user ID.
+        filekey: Random hex filekey for this upload.
+        aes_key_hex: Hex-encoded AES key used for encryption.
+        token: Bot bearer token.
+        base_url: API base URL.
+
+    Returns:
+        Dict with 'upload_url' and other metadata.
+    """
+    body = {
+        "to_user_id": to_user_id,
+        "media_type": media_type,
+        "rawfilemd5": file_md5,
+        "rawsize": file_size,
+        "filesize": cipher_size,
+        "filekey": filekey,
+        "aeskey": aes_key_hex,
+        "no_need_thumb": True,
+        "base_info": {"channel_version": CHANNEL_VERSION},
+    }
+    return post(EP_GET_UPLOAD_URL, body, token, base_url, timeout=15.0)
