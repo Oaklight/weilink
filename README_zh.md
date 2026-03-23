@@ -1,5 +1,10 @@
 # WeiLink
 
+[![PyPI](https://img.shields.io/pypi/v/weilink)](https://pypi.org/project/weilink/)
+[![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink)](https://github.com/Oaklight/weilink/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python](https://img.shields.io/pypi/pyversions/weilink)](https://pypi.org/project/weilink/)
+
 轻量级 Python SDK，用于微信 iLink Bot 协议。
 
 [English](README_en.md)
