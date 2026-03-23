@@ -30,3 +30,7 @@ wl.close()
 - 24-hour inactivity window — bot messages discarded after 24h
 - Text only in v0.1 — media support planned
 - Tencent may terminate iLink service at any time
+
+## Acknowledgments
+
+- Terminal QR code rendering based on [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) (MIT License)
