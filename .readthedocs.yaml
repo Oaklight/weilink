@@ -1,3 +1,6 @@
+# Read the Docs configuration file for Zensical
+# See https://docs.readthedocs.com/platform/latest/intro/zensical.html
+
 version: 2
 
 build:
@@ -5,11 +8,17 @@ build:
   tools:
     python: "3.11"
   jobs:
+    pre_build:
+      # Download the source code from the main repository for mkdocstrings
+      - git clone https://github.com/Oaklight/weilink.git src_repo
+      - mkdir -p src
+      - cp -r src_repo/src/weilink src/
+      - rm -rf src_repo
     install:
       - pip install -r requirements.txt
     build:
       html:
-        - mkdocs build
+        - zensical build
     post_build:
       - mkdir -p $READTHEDOCS_OUTPUT/html/
       - cp --recursive site/* $READTHEDOCS_OUTPUT/html/
