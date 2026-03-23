@@ -31,5 +31,9 @@ htmlcov/
 site/
 _build/
 
+# Documentation worktrees
+docs_en/
+docs_zh/
+
 # Weilink token (never commit credentials)
 token.json
