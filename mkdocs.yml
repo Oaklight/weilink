@@ -1,0 +1,74 @@
+site_name: WeiLink
+site_description: Lightweight Python SDK for WeChat iLink Bot protocol
+site_author: Peng Ding
+site_url: https://weilink.readthedocs.io/en/
+repo_name: Oaklight/weilink
+repo_url: https://github.com/Oaklight/weilink
+copyright: Copyright &copy; 2026 Peng Ding
+
+theme:
+  name: material
+  language: en
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Oaklight/weilink
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/weilink/
+  alternate:
+    - name: English
+      link: /en/
+      lang: en
+    - name: 中文
+      link: /zh-cn/
+      lang: zh
+
+nav:
+  - Home: index.md
+  - Usage:
+      - Installation: usage/installation.md
+      - Quick Start: usage/quickstart.md
+  - API Reference:
+      - WeiLink: api/client.md
+      - Models: api/models.md
+  - Examples:
+      - Echo Bot: examples/echo_bot.md
+  - Changelog: changelog.md
