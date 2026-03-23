@@ -286,28 +286,9 @@ class WeiLink:
 
         print(f"\nScan this QR code with WeChat:\n{url}\n")
 
-        # Try segno (pure Python, no deps)
-        try:
-            import segno
+        from weilink._qr import print_qr_terminal
 
-            qr = segno.make(url)
-            qr.terminal(compact=True)
-            return
-        except ImportError:
-            pass
-
-        # Try qrcode
-        try:
-            import qrcode as qr_lib
-
-            q = qr_lib.QRCode(border=1)
-            q.add_data(url)
-            q.print_ascii(invert=True)
-            return
-        except ImportError:
-            pass
-
-        print("(Install 'segno' or 'qrcode' for terminal QR display)\n")
+        print_qr_terminal(url)
 
     def _ensure_connected(self) -> None:
         """Raise if not logged in."""

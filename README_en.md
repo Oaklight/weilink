@@ -73,6 +73,10 @@ send()   →  Reply to a user (context_token auto-attached)
 - [Official npm package](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin)
 - [WeChat ClawBot Terms of Service](https://github.com/hao-ji-xing/openclaw-weixin/blob/main/protocol.md)
 
+## Acknowledgments
+
+- Terminal QR code rendering based on [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) (MIT License)
+
 ## License
 
 [MIT](LICENSE)

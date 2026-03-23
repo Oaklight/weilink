@@ -73,6 +73,10 @@ send()   →  回复消息（自动关联 context_token）
 - [官方 npm 包](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin)
 - [微信 ClawBot 功能使用条款](https://github.com/hao-ji-xing/openclaw-weixin/blob/main/protocol.md)
 
+## 致谢
+
+- QR 码终端渲染基于 [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator)（MIT 许可）
+
 ## License
 
 [MIT](LICENSE)
