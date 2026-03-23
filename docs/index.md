@@ -37,3 +37,4 @@ wl.close()
 ## Acknowledgments
 
 - Terminal QR code rendering based on [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) (MIT License)
+- AES-128 cipher core derived from [bozhu/AES-Python](https://github.com/bozhu/AES-Python) (MIT License), rewritten for Python 3 with ECB mode and PKCS7 padding added
