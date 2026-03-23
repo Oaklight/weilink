@@ -1,2 +1,4 @@
-zensical
+mkdocs-material>=9.0.0
+mkdocstrings[python]>=0.18
+mkdocs-autorefs>=0.5.0
 pymdown-extensions>=10.0.0
