@@ -30,3 +30,7 @@ wl.close()
 - 24 小时不活跃窗口 — 超时后机器人消息将被丢弃
 - v0.1 仅支持文本 — 媒体支持在计划中
 - 腾讯可能随时终止 iLink 服务
+
+## 致谢
+
+- QR 码终端渲染基于 [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator)（MIT 许可）
