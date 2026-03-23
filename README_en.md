@@ -2,7 +2,7 @@
 
 Lightweight Python SDK for the WeChat iLink Bot protocol.
 
-[中文](README.md)
+[中文](README_zh.md)
 
 ## Features
 
