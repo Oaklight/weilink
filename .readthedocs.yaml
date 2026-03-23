@@ -9,11 +9,8 @@ build:
     python: "3.11"
   jobs:
     pre_build:
-      # Download the source code from the main repository for mkdocstrings
-      - git clone https://github.com/Oaklight/weilink.git src_repo
-      - mkdir -p src
-      - cp -r src_repo/src/weilink src/
-      - rm -rf src_repo
+      # Install the package for mkdocstrings to resolve API references
+      - pip install git+https://github.com/Oaklight/weilink.git
     install:
       - pip install -r requirements.txt
     build:
