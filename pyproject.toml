@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "weilink"
+dynamic = ["version"]
+authors = [{ name = "Oaklight", email = "oaklight@gmx.com" }]
+description = "Lightweight Python SDK for WeChat iLink Bot protocol"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Communications :: Chat",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "build>=1.2.2.post1",
+    "twine>=6.1.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "coverage>=7.0.0",
+]
+
+[project.urls]
+Documentation = "https://weilink.readthedocs.io"
+Repository = "https://github.com/Oaklight/weilink"
+Issues = "https://github.com/Oaklight/weilink/issues"
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "UP"]
+ignore = ["UP007", "E501"]
+
+[tool.ty.environment]
+python-version = "3.10"
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.rules]
+unresolved-import = "ignore"
+
+[tool.setuptools.dynamic]
+version = { attr = "weilink.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"weilink" = ["py.typed"]

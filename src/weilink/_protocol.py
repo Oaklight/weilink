@@ -1,0 +1,256 @@
+"""Internal iLink Bot protocol implementation.
+
+Handles HTTP communication, header construction, and endpoint definitions.
+Not part of the public API.
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import random
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+# iLink API endpoints
+BASE_URL = "https://ilinkai.weixin.qq.com"
+EP_QR_CODE = "/ilink/bot/get_bot_qrcode"
+EP_QR_STATUS = "/ilink/bot/get_qrcode_status"
+EP_GET_UPDATES = "/ilink/bot/getupdates"
+EP_SEND_MESSAGE = "/ilink/bot/sendmessage"
+EP_GET_CONFIG = "/ilink/bot/getconfig"
+EP_SEND_TYPING = "/ilink/bot/sendtyping"
+
+# Protocol constants
+BOT_TYPE = 3
+CHANNEL_VERSION = "1.0.2"
+LONGPOLL_TIMEOUT = 35.0
+SESSION_EXPIRED = -14
+
+
+class ILinkError(Exception):
+    """Error from the iLink API."""
+
+    def __init__(self, ret: int, errcode: int | None = None, errmsg: str = ""):
+        self.ret = ret
+        self.errcode = errcode
+        self.errmsg = errmsg
+        super().__init__(f"iLink error: ret={ret}, errcode={errcode}, msg={errmsg}")
+
+
+class SessionExpiredError(ILinkError):
+    """Session expired, re-login required."""
+
+
+def _random_uin() -> str:
+    """Generate a random X-WECHAT-UIN header value.
+
+    Each request uses a fresh random uint32, base64-encoded.
+    """
+    val = random.randint(0, 0xFFFFFFFF)
+    return base64.b64encode(str(val).encode()).decode()
+
+
+def _make_headers(token: str | None = None) -> dict[str, str]:
+    """Build common iLink request headers."""
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "AuthorizationType": "ilink_bot_token",
+        "X-WECHAT-UIN": _random_uin(),
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def post(
+    endpoint: str,
+    body: dict[str, Any],
+    token: str,
+    base_url: str = BASE_URL,
+    timeout: float = LONGPOLL_TIMEOUT,
+) -> dict[str, Any]:
+    """POST JSON to an iLink endpoint.
+
+    Args:
+        endpoint: API path (e.g. "/ilink/bot/getupdates").
+        body: Request body as a dict.
+        token: Bot bearer token.
+        base_url: API base URL.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response as a dict.
+
+    Raises:
+        ILinkError: If the API returns a non-zero ret code.
+        SessionExpiredError: If the session has expired (errcode -14).
+    """
+    url = f"{base_url}{endpoint}"
+    data = json.dumps(body).encode()
+    headers = _make_headers(token)
+
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            result: dict[str, Any] = json.loads(resp.read())
+    except urllib.error.URLError as e:
+        raise ILinkError(ret=-1, errmsg=str(e)) from e
+
+    ret = result.get("ret", 0)
+    errcode = result.get("errcode")
+
+    if errcode == SESSION_EXPIRED:
+        raise SessionExpiredError(
+            ret=ret, errcode=errcode, errmsg=result.get("errmsg", "session expired")
+        )
+
+    return result
+
+
+def get(
+    endpoint: str,
+    params: dict[str, str] | None = None,
+    token: str | None = None,
+    base_url: str = BASE_URL,
+    timeout: float = 10.0,
+) -> dict[str, Any]:
+    """GET from an iLink endpoint.
+
+    Args:
+        endpoint: API path (e.g. "/ilink/bot/get_bot_qrcode").
+        params: Query parameters.
+        token: Bot bearer token (optional for login endpoints).
+        base_url: API base URL.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        Parsed JSON response as a dict.
+    """
+    url = f"{base_url}{endpoint}"
+    if params:
+        query = urllib.parse.urlencode(params)
+        url = f"{url}?{query}"
+
+    headers = _make_headers(token)
+    req = urllib.request.Request(url, headers=headers, method="GET")
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            result: dict[str, Any] = json.loads(resp.read())
+    except urllib.error.URLError as e:
+        raise ILinkError(ret=-1, errmsg=str(e)) from e
+
+    return result
+
+
+def get_qr_code(base_url: str = BASE_URL) -> dict[str, Any]:
+    """Request a QR code for login.
+
+    Returns:
+        Dict with 'qrcode' (code string) and 'qrcode_img_content' (optional).
+    """
+    return get(EP_QR_CODE, params={"bot_type": str(BOT_TYPE)}, base_url=base_url)
+
+
+def poll_qr_status(qrcode: str, base_url: str = BASE_URL) -> dict[str, Any]:
+    """Poll QR code scan status.
+
+    Returns:
+        Dict with 'status', and on success: 'bot_token', 'baseurl'.
+    """
+    return get(EP_QR_STATUS, params={"qrcode": qrcode}, base_url=base_url, timeout=30.0)
+
+
+def get_updates(cursor: str, token: str, base_url: str = BASE_URL) -> dict[str, Any]:
+    """Long-poll for new messages.
+
+    Args:
+        cursor: Sync cursor from previous response (empty string for first call).
+        token: Bot bearer token.
+        base_url: API base URL.
+
+    Returns:
+        Dict with 'msgs', 'get_updates_buf', etc.
+    """
+    body = {
+        "get_updates_buf": cursor,
+        "base_info": {"channel_version": CHANNEL_VERSION},
+    }
+    return post(EP_GET_UPDATES, body, token, base_url, timeout=LONGPOLL_TIMEOUT + 5)
+
+
+def send_message(
+    to_user: str,
+    text: str,
+    context_token: str,
+    token: str,
+    base_url: str = BASE_URL,
+) -> dict[str, Any]:
+    """Send a text message.
+
+    Args:
+        to_user: Target user ID (xxx@im.wechat).
+        text: Message text.
+        context_token: Context token from a received message.
+        token: Bot bearer token.
+        base_url: API base URL.
+    """
+    body = {
+        "msg": {
+            "to_user_id": to_user,
+            "message_type": 2,  # BOT
+            "message_state": 2,  # FINISH
+            "context_token": context_token,
+            "item_list": [{"type": 1, "text_item": {"text": text}}],
+        },
+        "base_info": {"channel_version": CHANNEL_VERSION},
+    }
+    return post(EP_SEND_MESSAGE, body, token, base_url, timeout=10.0)
+
+
+def get_config(
+    user_id: str,
+    token: str,
+    context_token: str | None = None,
+    base_url: str = BASE_URL,
+) -> dict[str, Any]:
+    """Get account config (typing ticket).
+
+    Args:
+        user_id: Target user ID.
+        token: Bot bearer token.
+        context_token: Optional conversation context token.
+        base_url: API base URL.
+    """
+    body: dict[str, Any] = {"ilink_user_id": user_id}
+    if context_token:
+        body["context_token"] = context_token
+    return post(EP_GET_CONFIG, body, token, base_url, timeout=10.0)
+
+
+def send_typing(
+    user_id: str,
+    typing_ticket: str,
+    status: int,
+    token: str,
+    base_url: str = BASE_URL,
+) -> dict[str, Any]:
+    """Send or cancel typing indicator.
+
+    Args:
+        user_id: Target user ID.
+        typing_ticket: Ticket from get_config.
+        status: 1 = typing, 2 = cancel.
+        token: Bot bearer token.
+        base_url: API base URL.
+    """
+    body = {
+        "ilink_user_id": user_id,
+        "typing_ticket": typing_ticket,
+        "status": status,
+    }
+    return post(EP_SEND_TYPING, body, token, base_url, timeout=10.0)
