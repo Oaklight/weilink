@@ -17,7 +17,9 @@ from weilink.models import (
     MediaInfo,
     Message,
     MessageType,
+    SendMediaType,
     UploadMediaType,
+    UploadedMedia,
     VideoInfo,
     VoiceInfo,
 )
@@ -279,24 +281,38 @@ class WeiLink:
 
         return messages
 
+    _UPLOAD_TO_SEND: dict[UploadMediaType, SendMediaType] = {
+        UploadMediaType.IMAGE: SendMediaType.IMAGE,
+        UploadMediaType.VOICE: SendMediaType.VOICE,
+        UploadMediaType.FILE: SendMediaType.FILE,
+        UploadMediaType.VIDEO: SendMediaType.VIDEO,
+    }
+
+    _SEND_ITEM_KEY: dict[SendMediaType, str] = {
+        SendMediaType.IMAGE: "image_item",
+        SendMediaType.VOICE: "voice_item",
+        SendMediaType.FILE: "file_item",
+        SendMediaType.VIDEO: "video_item",
+    }
+
     def send(
         self,
         to: str,
         text: str | None = None,
         *,
-        image: bytes | list[bytes] | None = None,
-        voice: bytes | list[bytes] | None = None,
-        file: bytes | list[bytes] | None = None,
+        image: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
+        voice: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
+        file: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
         file_name: str | list[str] = "",
-        video: bytes | list[bytes] | None = None,
+        video: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
     ) -> bool:
         """Send a message to a user.
 
         Supports text and media (image, voice, file, video). Each media
-        parameter accepts a single ``bytes`` object or a list of ``bytes``
-        for batch sending (e.g. multiple images). When multiple fields are
-        provided, each is sent as a separate message in order:
-        text -> image(s) -> voice(s) -> file(s) -> video(s).
+        parameter accepts raw ``bytes``, an ``UploadedMedia`` reference
+        from ``upload()``, or a list of either for batch sending.
+        When multiple fields are provided, each is sent as a separate
+        message in order: text -> image(s) -> voice(s) -> file(s) -> video(s).
 
         Uses the cached context_token from the most recent message received
         from this user. Returns False if no context_token is available or
@@ -305,48 +321,55 @@ class WeiLink:
         Args:
             to: Target user ID (xxx@im.wechat).
             text: Text message content.
-            image: Raw image bytes, or list of image bytes.
-            voice: Raw voice bytes, or list of voice bytes.
-            file: Raw file bytes, or list of file bytes.
-            file_name: File name(s). Required when sending file(s).
-                A single string for one file, or a list of strings
-                matching the length of the file list.
-            video: Raw video bytes, or list of video bytes.
+            image: Image bytes/UploadedMedia, or list thereof.
+            voice: Voice bytes/UploadedMedia, or list thereof.
+            file: File bytes/UploadedMedia, or list thereof.
+            file_name: File name(s). Required when sending file(s)
+                as raw bytes. Ignored for UploadedMedia (uses the
+                name stored in the reference).
+            video: Video bytes/UploadedMedia, or list thereof.
 
         Returns:
             True if all sends succeeded, False otherwise.
 
         Raises:
             RuntimeError: If not logged in.
-            ValueError: If file is provided without file_name, or if
-                file and file_name list lengths don't match.
+            ValueError: If file bytes are provided without file_name,
+                or if file and file_name list lengths don't match.
         """
-        # Normalize to lists
-        images = [image] if isinstance(image, bytes) else (image or [])
-        voices = [voice] if isinstance(voice, bytes) else (voice or [])
-        videos = [video] if isinstance(video, bytes) else (video or [])
 
-        if isinstance(file, bytes):
-            files = [file]
-            fnames = [file_name] if isinstance(file_name, str) else file_name
-        elif file:
-            files = file
-            fnames = [file_name] if isinstance(file_name, str) else file_name
-        else:
-            files = []
-            fnames = []
+        # Normalize single items to lists
+        def _to_list(
+            v: bytes | UploadedMedia | list[bytes | UploadedMedia] | None,
+        ) -> list[bytes | UploadedMedia]:
+            if v is None:
+                return []
+            if isinstance(v, (bytes, UploadedMedia)):
+                return [v]
+            return list(v)
 
+        images = _to_list(image)
+        voices = _to_list(voice)
+        videos = _to_list(video)
+        files = _to_list(file)
+
+        # Resolve file names for raw bytes files
         if files:
-            if isinstance(fnames, str):
-                fnames = [fnames]
-            if len(fnames) == 1 and len(files) > 1:
-                fnames = fnames * len(files)
-            if len(files) != len(fnames):
-                raise ValueError(
-                    f"file and file_name length mismatch: {len(files)} vs {len(fnames)}"
-                )
-            if any(not fn for fn in fnames):
-                raise ValueError("file_name is required when sending a file")
+            raw_files = [f for f in files if isinstance(f, bytes)]
+            if raw_files:
+                if isinstance(file_name, str):
+                    fnames = [file_name] if file_name else []
+                else:
+                    fnames = list(file_name)
+                if len(fnames) == 1 and len(raw_files) > 1:
+                    fnames = fnames * len(raw_files)
+                if len(raw_files) != len(fnames):
+                    raise ValueError(
+                        f"file and file_name length mismatch: "
+                        f"{len(raw_files)} raw bytes vs {len(fnames)} names"
+                    )
+                if any(not fn for fn in fnames):
+                    raise ValueError("file_name is required when sending a file")
 
         self._ensure_connected()
         assert self._bot_info is not None
@@ -381,23 +404,41 @@ class WeiLink:
                 logger.error("Failed to send text to %s: %s", to, e)
                 all_ok = False
 
-        # Send media in order: images -> voices -> files -> videos
-        media_items: list[tuple[bytes, UploadMediaType, str, str]] = []
-        for data in images:
-            media_items.append((data, UploadMediaType.IMAGE, "image_item", ""))
-        for data in voices:
-            media_items.append((data, UploadMediaType.VOICE, "voice_item", ""))
-        for data, fn in zip(files, fnames):
-            media_items.append((data, UploadMediaType.FILE, "file_item", fn))
-        for data in videos:
-            media_items.append((data, UploadMediaType.VIDEO, "video_item", ""))
+        # Build ordered send queue: images -> voices -> files -> videos
+        send_queue: list[tuple[bytes | UploadedMedia, UploadMediaType, str, str]] = []
+        for item in images:
+            send_queue.append((item, UploadMediaType.IMAGE, "image_item", ""))
+        for item in voices:
+            send_queue.append((item, UploadMediaType.VOICE, "voice_item", ""))
 
-        for data, media_type, item_key, fname in media_items:
-            ok = self._send_media(to, data, media_type, item_key, file_name=fname)
+        # For files, pair raw bytes with file_name; UploadedMedia carries its own
+        fname_iter = (
+            iter(fnames)
+            if files and any(isinstance(f, bytes) for f in files)
+            else iter([])
+        )
+        for item in files:
+            if isinstance(item, UploadedMedia):
+                send_queue.append(
+                    (item, UploadMediaType.FILE, "file_item", item.file_name)
+                )
+            else:
+                send_queue.append(
+                    (item, UploadMediaType.FILE, "file_item", next(fname_iter))
+                )
+
+        for item in videos:
+            send_queue.append((item, UploadMediaType.VIDEO, "video_item", ""))
+
+        for item, media_type, item_key, fname in send_queue:
+            if isinstance(item, UploadedMedia):
+                ok = self._send_uploaded(to, item)
+            else:
+                ok = self._send_media(to, item, media_type, item_key, file_name=fname)
             if not ok:
                 all_ok = False
 
-        if not text and not media_items:
+        if not text and not send_queue:
             logger.warning("send() called with no content")
             return False
 
@@ -444,6 +485,77 @@ class WeiLink:
             )
 
         return download_media(media.encrypt_query_param, media.aes_key)
+
+    def upload(
+        self,
+        to: str,
+        data: bytes,
+        media_type: str,
+        file_name: str = "",
+    ) -> UploadedMedia:
+        """Pre-upload media to CDN without sending.
+
+        Returns an ``UploadedMedia`` reference that can be passed to
+        ``send()`` one or more times, avoiding repeated uploads of the
+        same file.
+
+        Args:
+            to: Target user ID (xxx@im.wechat). CDN uploads are
+                user-bound.
+            data: Raw file bytes.
+            media_type: One of ``"image"``, ``"voice"``, ``"file"``,
+                ``"video"``.
+            file_name: Original file name (required for ``"file"`` type).
+
+        Returns:
+            UploadedMedia with CDN reference info.
+
+        Raises:
+            RuntimeError: If not logged in.
+            ValueError: If media_type is invalid or file_name missing
+                for file uploads.
+        """
+        type_map = {
+            "image": UploadMediaType.IMAGE,
+            "voice": UploadMediaType.VOICE,
+            "file": UploadMediaType.FILE,
+            "video": UploadMediaType.VIDEO,
+        }
+        upload_type = type_map.get(media_type)
+        if upload_type is None:
+            raise ValueError(
+                f"Invalid media_type {media_type!r}, "
+                f"expected one of {list(type_map.keys())}"
+            )
+        if media_type == "file" and not file_name:
+            raise ValueError("file_name is required for file uploads")
+
+        from weilink._cdn import upload_media
+
+        self._ensure_connected()
+        assert self._bot_info is not None
+
+        def _get_url(**kwargs: Any) -> dict[str, Any]:
+            assert self._bot_info is not None
+            return proto.get_upload_url(
+                **kwargs,
+                token=self._bot_info.token,
+                base_url=self._bot_info.base_url,
+            )
+
+        uploaded = upload_media(data, upload_type.value, to, _get_url)
+        if file_name:
+            # Attach file_name to the frozen dataclass by creating a new instance
+            uploaded = UploadedMedia(
+                media_type=uploaded.media_type,
+                filekey=uploaded.filekey,
+                download_param=uploaded.download_param,
+                aes_key_hex=uploaded.aes_key_hex,
+                file_size=uploaded.file_size,
+                cipher_size=uploaded.cipher_size,
+                file_name=file_name,
+            )
+        return uploaded
 
     def close(self) -> None:
         """Save state and clean up."""
@@ -599,6 +711,67 @@ class WeiLink:
         if msg.msg_type == MessageType.VIDEO and msg.video:
             return msg.video.media
         return None
+
+    def _send_uploaded(self, to: str, uploaded: UploadedMedia) -> bool:
+        """Send a pre-uploaded media reference without re-uploading.
+
+        Args:
+            to: Target user ID.
+            uploaded: UploadedMedia from upload() or _send_media().
+
+        Returns:
+            True if sent successfully.
+        """
+        self._ensure_connected()
+        assert self._bot_info is not None
+
+        ctx_token = self._context_tokens.get(to)
+        if not ctx_token:
+            logger.warning("No context_token for user %s, cannot send", to)
+            return False
+
+        send_type = self._UPLOAD_TO_SEND[uploaded.media_type]
+        item_key = self._SEND_ITEM_KEY[send_type]
+
+        aes_key_b64 = base64.b64encode(uploaded.aes_key_hex.encode()).decode()
+        media_dict: dict[str, Any] = {
+            "media": {
+                "encrypt_query_param": uploaded.download_param,
+                "aes_key": aes_key_b64,
+                "encrypt_type": 1,
+            }
+        }
+        if item_key == "image_item":
+            media_dict["mid_size"] = uploaded.cipher_size
+        elif item_key == "video_item":
+            media_dict["video_size"] = uploaded.cipher_size
+        if uploaded.file_name and item_key == "file_item":
+            media_dict["file_name"] = uploaded.file_name
+            media_dict["len"] = str(uploaded.file_size)
+
+        item_list = [{"type": send_type.value, item_key: media_dict}]
+
+        try:
+            resp = proto.send_media_message(
+                to_user=to,
+                item_list=item_list,
+                context_token=ctx_token,
+                token=self._bot_info.token,
+                base_url=self._bot_info.base_url,
+            )
+            ret = resp.get("ret", 0)
+            if ret != 0:
+                logger.warning(
+                    "send uploaded media to %s returned ret=%s: %s",
+                    to,
+                    ret,
+                    resp.get("errmsg", ""),
+                )
+                return False
+            return True
+        except proto.ILinkError as e:
+            logger.error("Failed to send uploaded media to %s: %s", to, e)
+            return False
 
     def _send_media(
         self,

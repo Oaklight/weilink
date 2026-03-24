@@ -113,9 +113,10 @@ class TestUploadedMedia:
     """Tests for UploadedMedia dataclass."""
 
     def test_creation(self) -> None:
-        from weilink._cdn import UploadedMedia
+        from weilink.models import UploadedMedia, UploadMediaType
 
         um = UploadedMedia(
+            media_type=UploadMediaType.IMAGE,
             filekey="abc123",
             download_param="param",
             aes_key_hex="0" * 32,
@@ -124,3 +125,4 @@ class TestUploadedMedia:
         )
         assert um.filekey == "abc123"
         assert um.file_size == 100
+        assert um.media_type == UploadMediaType.IMAGE

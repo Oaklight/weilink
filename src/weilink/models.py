@@ -40,6 +40,41 @@ class UploadMediaType(IntEnum):
     VOICE = 4
 
 
+class SendMediaType(IntEnum):
+    """Media type codes used in the send message item_list."""
+
+    IMAGE = 2
+    VOICE = 3
+    FILE = 4
+    VIDEO = 5
+
+
+@dataclass(frozen=True)
+class UploadedMedia:
+    """Result of a CDN media pre-upload via ``WeiLink.upload()``.
+
+    Pass this object to ``WeiLink.send()`` instead of raw bytes to reuse
+    a previously uploaded file without re-uploading.
+
+    Attributes:
+        media_type: The media type used for this upload.
+        filekey: Random hex filekey used for this upload.
+        download_param: CDN download parameter (x-encrypted-param header).
+        aes_key_hex: Hex-encoded AES key used for encryption.
+        file_size: Original plaintext file size.
+        cipher_size: Encrypted file size.
+        file_name: Original file name (for files only).
+    """
+
+    media_type: UploadMediaType
+    filekey: str
+    download_param: str
+    aes_key_hex: str
+    file_size: int
+    cipher_size: int
+    file_name: str = ""
+
+
 @dataclass(frozen=True)
 class BotInfo:
     """Bot credentials obtained after QR code login.

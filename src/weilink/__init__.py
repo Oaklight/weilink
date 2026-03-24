@@ -1,6 +1,6 @@
 """WeiLink - Lightweight Python SDK for WeChat iLink Bot protocol."""
 
-__version__ = "0.2.0"
+__version__ = "0.3.0b1"
 
 from weilink.client import WeiLink
 from weilink.models import (
@@ -10,6 +10,7 @@ from weilink.models import (
     MediaInfo,
     Message,
     MessageType,
+    UploadedMedia,
     VideoInfo,
     VoiceInfo,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "MediaInfo",
     "Message",
     "MessageType",
+    "UploadedMedia",
     "VideoInfo",
     "VoiceInfo",
 ]

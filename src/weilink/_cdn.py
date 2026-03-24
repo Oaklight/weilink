@@ -15,10 +15,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any
 
 from Crypto.Cipher import AES
+
+from weilink.models import UploadMediaType, UploadedMedia
 
 CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
 AES_BLOCK_SIZE = 16
@@ -128,25 +129,6 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
         encrypted = resp.read()
 
     return aes_ecb_decrypt(encrypted, key)
-
-
-@dataclass
-class UploadedMedia:
-    """Result of a CDN media upload.
-
-    Attributes:
-        filekey: Random hex filekey used for this upload.
-        download_param: CDN download parameter (x-encrypted-param header).
-        aes_key_hex: Hex-encoded AES key used for encryption.
-        file_size: Original plaintext file size.
-        cipher_size: Encrypted file size.
-    """
-
-    filekey: str
-    download_param: str
-    aes_key_hex: str
-    file_size: int
-    cipher_size: int
 
 
 def upload_media(
@@ -262,6 +244,7 @@ def upload_media(
         )
 
     return UploadedMedia(
+        media_type=UploadMediaType(media_type),
         filekey=filekey,
         download_param=download_param,
         aes_key_hex=aes_key_hex,

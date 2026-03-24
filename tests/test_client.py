@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from weilink.client import WeiLink
-from weilink.models import BotInfo, MessageType
+from weilink.models import BotInfo, MessageType, UploadMediaType, UploadedMedia
 
 
 class TestWeiLinkInit:
@@ -358,3 +358,99 @@ class TestContextPersistence:
             wl = WeiLink(token_path=token_path)
             assert "bad_user@im.wechat" not in wl._context_tokens
             assert wl._context_tokens.get("good_user@im.wechat") == "tok"
+
+
+class TestUploadAndReuse:
+    """Tests for upload() and send() with UploadedMedia."""
+
+    def _make_client(self, tmpdir: str) -> WeiLink:
+        """Create a logged-in WeiLink client with a context_token."""
+        token_path = Path(tmpdir) / "token.json"
+        token_path.write_text(
+            json.dumps(
+                {
+                    "bot_id": "test@im.bot",
+                    "base_url": "https://example.com",
+                    "token": "test_token",
+                }
+            )
+        )
+        wl = WeiLink(token_path=token_path)
+        wl._context_tokens["user@im.wechat"] = "ctx_tok"
+        wl._context_timestamps["user@im.wechat"] = time.time()
+        return wl
+
+    def test_upload_requires_login(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            try:
+                wl.upload("user@im.wechat", b"data", "image")
+                assert False, "Should raise RuntimeError"
+            except RuntimeError:
+                pass
+
+    def test_upload_invalid_media_type(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = self._make_client(tmpdir)
+            try:
+                wl.upload("user@im.wechat", b"data", "pdf")
+                assert False, "Should raise ValueError"
+            except ValueError as e:
+                assert "pdf" in str(e)
+
+    def test_upload_file_requires_name(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = self._make_client(tmpdir)
+            try:
+                wl.upload("user@im.wechat", b"data", "file")
+                assert False, "Should raise ValueError"
+            except ValueError as e:
+                assert "file_name" in str(e)
+
+    def test_send_with_uploaded_media_no_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = self._make_client(tmpdir)
+            ref = UploadedMedia(
+                media_type=UploadMediaType.IMAGE,
+                filekey="abc",
+                download_param="param",
+                aes_key_hex="0" * 32,
+                file_size=100,
+                cipher_size=112,
+            )
+            result = wl.send("unknown@im.wechat", image=ref)
+            assert result is False
+
+    def test_uploaded_media_frozen(self):
+        ref = UploadedMedia(
+            media_type=UploadMediaType.IMAGE,
+            filekey="abc",
+            download_param="param",
+            aes_key_hex="0" * 32,
+            file_size=100,
+            cipher_size=112,
+        )
+        try:
+            ref.filekey = "xyz"  # type: ignore[misc]
+            assert False, "Should raise FrozenInstanceError"
+        except AttributeError:
+            pass
+
+    def test_uploaded_media_file_name(self):
+        ref = UploadedMedia(
+            media_type=UploadMediaType.FILE,
+            filekey="abc",
+            download_param="param",
+            aes_key_hex="0" * 32,
+            file_size=100,
+            cipher_size=112,
+            file_name="test.pdf",
+        )
+        assert ref.file_name == "test.pdf"
+        assert ref.media_type == UploadMediaType.FILE
+
+    def test_send_no_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = self._make_client(tmpdir)
+            result = wl.send("user@im.wechat")
+            assert result is False
