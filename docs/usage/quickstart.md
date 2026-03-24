@@ -33,6 +33,27 @@ if not ok:
 
 如果该用户没有可用的 `context_token`，`send()` 返回 `False`。
 
+## 发送媒体
+
+统一的 `send()` 方法支持文本、图片、语音、文件和视频：
+
+```python
+# 图片
+wl.send(user, image=img_data)
+
+# 语音
+wl.send(user, voice=audio_data)
+
+# 文件（指定文件名）
+wl.send(user, file=pdf_data, file_name="report.pdf")
+
+# 视频
+wl.send(user, video=vid_data)
+
+# 文本 + 多张图片
+wl.send(user, "看看这些照片", image=[img1, img2])
+```
+
 ## 输入状态指示
 
 ```python
