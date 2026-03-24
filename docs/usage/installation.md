@@ -17,4 +17,4 @@ pip install -e .
 ## Requirements
 
 - Python >= 3.10
-- No external dependencies
+- `pycryptodome` (installed automatically)

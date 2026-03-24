@@ -33,6 +33,27 @@ if not ok:
 
 `send()` returns `False` if no `context_token` is available for the user.
 
+## Send Media
+
+The unified `send()` method supports text, images, voice, files, and video:
+
+```python
+# Image
+wl.send(user, image=img_data)
+
+# Voice
+wl.send(user, voice=audio_data)
+
+# File (with filename)
+wl.send(user, file=pdf_data, file_name="report.pdf")
+
+# Video
+wl.send(user, video=vid_data)
+
+# Text + multiple images
+wl.send(user, "Check these photos", image=[img1, img2])
+```
+
 ## Typing Indicator
 
 ```python

@@ -7,7 +7,7 @@ Lightweight Python SDK for the WeChat iLink Bot protocol.
 
 ## Features
 
-- **Zero dependencies** — Pure Python standard library
+- **Minimal dependencies** — Only requires `pycryptodome` for AES media encryption
 - **Message queue semantics** — `login()` / `send()` / `recv()`
 - **Automatic state management** — `context_token` and cursor handled internally
 - **Credential persistence** — Token saved after QR login
@@ -31,7 +31,6 @@ wl.close()
 
 - Cannot initiate conversations — user must message first
 - 24-hour inactivity window — bot messages discarded after 24h
-- Text only in v0.1 — media support planned
 - Tencent may terminate iLink service at any time
 
 ## Acknowledgments
