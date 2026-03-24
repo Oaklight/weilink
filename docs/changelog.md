@@ -1,15 +1,14 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-03-24)
 
-- **Breaking:** Unified `send()` API — removed `send_image()`, `send_voice()`, `send_file()`, `send_video()` in favor of a single `send(to, text, *, image, voice, file, video, file_name)` method
-- `pycryptodome` is now a core dependency (no longer optional)
-- Removed lazy-import `_require_crypto()`; AES is now imported directly
-- Fix CDN upload failures: retry logic (max 3 attempts on 5xx), correct response header (`x-encrypted-param`), URL encoding matching JS `encodeURIComponent`
-- Fix image decryption: prefer `image_item.aeskey` (raw hex) over `media.aes_key` (base64)
+- Add multimodal message support — `send()` now accepts `image`, `voice`, `file`, `video` parameters (single or batch via list)
+- Add media download — `download()` retrieves received image/voice/file/video content
+- Add `pycryptodome` as core dependency for AES-128-ECB media encryption
 - Persist context_tokens across restarts for proactive messaging
-- Add proactive messaging examples (`test_proactive_send.py`, `test_proactive_media.py`)
-- Support `LOGLEVEL` env var in `media_echo.py` example
+- Fix CDN upload: retry on 5xx, correct response header, URL encoding aligned with JS `encodeURIComponent`
+- Fix image decryption key selection
+- Add examples: `media_echo.py`, `test_proactive_send.py`, `test_proactive_media.py`
 
 ## v0.1.0 (2026-03-23)
 
