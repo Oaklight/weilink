@@ -279,22 +279,75 @@ class WeiLink:
 
         return messages
 
-    def send(self, to: str, text: str) -> bool:
-        """Send a text message to a user.
+    def send(
+        self,
+        to: str,
+        text: str | None = None,
+        *,
+        image: bytes | list[bytes] | None = None,
+        voice: bytes | list[bytes] | None = None,
+        file: bytes | list[bytes] | None = None,
+        file_name: str | list[str] = "",
+        video: bytes | list[bytes] | None = None,
+    ) -> bool:
+        """Send a message to a user.
+
+        Supports text and media (image, voice, file, video). Each media
+        parameter accepts a single ``bytes`` object or a list of ``bytes``
+        for batch sending (e.g. multiple images). When multiple fields are
+        provided, each is sent as a separate message in order:
+        text -> image(s) -> voice(s) -> file(s) -> video(s).
 
         Uses the cached context_token from the most recent message received
-        from this user. Returns False if no context_token is available.
+        from this user. Returns False if no context_token is available or
+        any individual send fails.
 
         Args:
             to: Target user ID (xxx@im.wechat).
-            text: Message text.
+            text: Text message content.
+            image: Raw image bytes, or list of image bytes.
+            voice: Raw voice bytes, or list of voice bytes.
+            file: Raw file bytes, or list of file bytes.
+            file_name: File name(s). Required when sending file(s).
+                A single string for one file, or a list of strings
+                matching the length of the file list.
+            video: Raw video bytes, or list of video bytes.
 
         Returns:
-            True if sent successfully, False if no valid context_token.
+            True if all sends succeeded, False otherwise.
 
         Raises:
             RuntimeError: If not logged in.
+            ValueError: If file is provided without file_name, or if
+                file and file_name list lengths don't match.
         """
+        # Normalize to lists
+        images = [image] if isinstance(image, bytes) else (image or [])
+        voices = [voice] if isinstance(voice, bytes) else (voice or [])
+        videos = [video] if isinstance(video, bytes) else (video or [])
+
+        if isinstance(file, bytes):
+            files = [file]
+            fnames = [file_name] if isinstance(file_name, str) else file_name
+        elif file:
+            files = file
+            fnames = [file_name] if isinstance(file_name, str) else file_name
+        else:
+            files = []
+            fnames = []
+
+        if files:
+            if isinstance(fnames, str):
+                fnames = [fnames]
+            if len(fnames) == 1 and len(files) > 1:
+                fnames = fnames * len(files)
+            if len(files) != len(fnames):
+                raise ValueError(
+                    f"file and file_name length mismatch: {len(files)} vs {len(fnames)}"
+                )
+            if any(not fn for fn in fnames):
+                raise ValueError("file_name is required when sending a file")
+
         self._ensure_connected()
         assert self._bot_info is not None
 
@@ -303,24 +356,52 @@ class WeiLink:
             logger.warning("No context_token for user %s, cannot send", to)
             return False
 
-        try:
-            resp = proto.send_message(
-                to_user=to,
-                text=text,
-                context_token=ctx_token,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
-            )
-            ret = resp.get("ret", 0)
-            if ret != 0:
-                logger.warning(
-                    "send to %s returned ret=%s: %s", to, ret, resp.get("errmsg", "")
+        all_ok = True
+
+        # Send text
+        if text:
+            try:
+                resp = proto.send_message(
+                    to_user=to,
+                    text=text,
+                    context_token=ctx_token,
+                    token=self._bot_info.token,
+                    base_url=self._bot_info.base_url,
                 )
-                return False
-            return True
-        except proto.ILinkError as e:
-            logger.error("Failed to send message to %s: %s", to, e)
+                ret = resp.get("ret", 0)
+                if ret != 0:
+                    logger.warning(
+                        "send text to %s returned ret=%s: %s",
+                        to,
+                        ret,
+                        resp.get("errmsg", ""),
+                    )
+                    all_ok = False
+            except proto.ILinkError as e:
+                logger.error("Failed to send text to %s: %s", to, e)
+                all_ok = False
+
+        # Send media in order: images -> voices -> files -> videos
+        media_items: list[tuple[bytes, UploadMediaType, str, str]] = []
+        for data in images:
+            media_items.append((data, UploadMediaType.IMAGE, "image_item", ""))
+        for data in voices:
+            media_items.append((data, UploadMediaType.VOICE, "voice_item", ""))
+        for data, fn in zip(files, fnames):
+            media_items.append((data, UploadMediaType.FILE, "file_item", fn))
+        for data in videos:
+            media_items.append((data, UploadMediaType.VIDEO, "video_item", ""))
+
+        for data, media_type, item_key, fname in media_items:
+            ok = self._send_media(to, data, media_type, item_key, file_name=fname)
+            if not ok:
+                all_ok = False
+
+        if not text and not media_items:
+            logger.warning("send() called with no content")
             return False
+
+        return all_ok
 
     def send_typing(self, to: str) -> None:
         """Show "typing" indicator to a user.
@@ -363,81 +444,6 @@ class WeiLink:
             )
 
         return download_media(media.encrypt_query_param, media.aes_key)
-
-    def send_image(self, to: str, image_data: bytes) -> bool:
-        """Send an image to a user.
-
-        Requires ``weilink[media]`` (pycryptodome).
-
-        Args:
-            to: Target user ID (xxx@im.wechat).
-            image_data: Raw image bytes (JPEG, PNG, etc.).
-
-        Returns:
-            True if sent successfully.
-
-        Raises:
-            ImportError: If pycryptodome is not installed.
-            RuntimeError: If not logged in.
-        """
-        return self._send_media(to, image_data, UploadMediaType.IMAGE, "image_item")
-
-    def send_voice(self, to: str, voice_data: bytes) -> bool:
-        """Send a voice message to a user.
-
-        Requires ``weilink[media]`` (pycryptodome).
-
-        Args:
-            to: Target user ID (xxx@im.wechat).
-            voice_data: Raw voice file bytes.
-
-        Returns:
-            True if sent successfully.
-
-        Raises:
-            ImportError: If pycryptodome is not installed.
-            RuntimeError: If not logged in.
-        """
-        return self._send_media(to, voice_data, UploadMediaType.VOICE, "voice_item")
-
-    def send_file(self, to: str, file_data: bytes, file_name: str) -> bool:
-        """Send a file to a user.
-
-        Requires ``weilink[media]`` (pycryptodome).
-
-        Args:
-            to: Target user ID (xxx@im.wechat).
-            file_data: Raw file bytes.
-            file_name: Original file name.
-
-        Returns:
-            True if sent successfully.
-
-        Raises:
-            ImportError: If pycryptodome is not installed.
-            RuntimeError: If not logged in.
-        """
-        return self._send_media(
-            to, file_data, UploadMediaType.FILE, "file_item", file_name=file_name
-        )
-
-    def send_video(self, to: str, video_data: bytes) -> bool:
-        """Send a video to a user.
-
-        Requires ``weilink[media]`` (pycryptodome).
-
-        Args:
-            to: Target user ID (xxx@im.wechat).
-            video_data: Raw video file bytes.
-
-        Returns:
-            True if sent successfully.
-
-        Raises:
-            ImportError: If pycryptodome is not installed.
-            RuntimeError: If not logged in.
-        """
-        return self._send_media(to, video_data, UploadMediaType.VIDEO, "video_item")
 
     def close(self) -> None:
         """Save state and clean up."""
