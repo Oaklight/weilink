@@ -11,10 +11,14 @@ Text messages are echoed as text; media messages are downloaded and re-sent.
 from __future__ import annotations
 
 import logging
+import os
 
 from weilink import MessageType, WeiLink
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=getattr(logging, os.environ.get("LOGLEVEL", "INFO").upper(), logging.INFO),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 

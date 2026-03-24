@@ -22,6 +22,9 @@ import logging
 
 CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
 AES_BLOCK_SIZE = 16
+UPLOAD_MAX_RETRIES = 3
+# Match JS encodeURIComponent: unreserved chars that should NOT be percent-encoded
+_URI_SAFE = "-_.!~*'()"
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +143,7 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
     """
     key = _decode_aes_key(aes_key)
 
-    url = f"{CDN_BASE}/download?encrypted_query_param={urllib.parse.quote(encrypt_query_param, safe='')}"
+    url = f"{CDN_BASE}/download?encrypted_query_param={urllib.parse.quote(encrypt_query_param, safe=_URI_SAFE)}"
     req = urllib.request.Request(url, method="GET")
 
     with urllib.request.urlopen(req, timeout=60) as resp:
@@ -227,8 +230,8 @@ def upload_media(
 
     upload_url = (
         f"{CDN_BASE}/upload"
-        f"?encrypted_query_param={urllib.parse.quote(upload_param, safe='')}"
-        f"&filekey={urllib.parse.quote(filekey, safe='')}"
+        f"?encrypted_query_param={urllib.parse.quote(upload_param, safe=_URI_SAFE)}"
+        f"&filekey={urllib.parse.quote(filekey, safe=_URI_SAFE)}"
     )
     logger.debug("CDN upload: url=%s ciphertext=%d bytes", upload_url, len(encrypted))
     req = urllib.request.Request(
@@ -237,37 +240,48 @@ def upload_media(
         method="POST",
         headers={"Content-Type": "application/octet-stream"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            download_param = (
-                resp.headers.get("x-encrypted-query-param")
-                or resp.headers.get("x-encrypted-param")
-                or ""
-            )
-    except urllib.error.HTTPError as e:
-        # CDN may return 500 for preview errors while the upload itself
-        # succeeded — the download param is still in the response headers.
-        download_param = (
-            e.headers.get("x-encrypted-query-param")
-            or e.headers.get("x-encrypted-param")
-            or ""
-        )
-        if download_param:
-            logger.debug(
-                "CDN upload returned %s but download_param present (%d chars), continuing",
-                e.code,
-                len(download_param),
-            )
-        else:
-            body = e.read().decode(errors="replace")
+
+    download_param: str | None = None
+    last_error: Exception | None = None
+
+    for attempt in range(1, UPLOAD_MAX_RETRIES + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                download_param = resp.headers.get("x-encrypted-param") or None
+            if not download_param:
+                raise RuntimeError("CDN response missing x-encrypted-param header")
+            logger.debug("CDN upload success attempt=%d", attempt)
+            break
+        except urllib.error.HTTPError as e:
+            err_msg = e.headers.get("x-error-message") or f"status {e.code}"
+            if 400 <= e.code < 500:
+                logger.error(
+                    "CDN upload client error attempt=%d status=%d msg=%s",
+                    attempt,
+                    e.code,
+                    err_msg,
+                )
+                raise
             logger.error(
-                "CDN upload failed: %s %s headers=%s body=%s",
+                "CDN upload server error attempt=%d status=%d msg=%s",
+                attempt,
                 e.code,
-                e.reason,
-                dict(e.headers),
-                body[:500],
+                err_msg,
             )
-            raise
+            last_error = e
+        except Exception as e:
+            logger.error("CDN upload error attempt=%d: %s", attempt, e)
+            last_error = e
+
+        if attempt < UPLOAD_MAX_RETRIES:
+            logger.debug(
+                "Retrying CDN upload (%d/%d)...", attempt + 1, UPLOAD_MAX_RETRIES
+            )
+
+    if not download_param:
+        raise last_error or RuntimeError(
+            f"CDN upload failed after {UPLOAD_MAX_RETRIES} attempts"
+        )
 
     return UploadedMedia(
         filekey=filekey,

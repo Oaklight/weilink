@@ -466,8 +466,21 @@ class WeiLink:
 
     @classmethod
     def _parse_image_item(cls, raw: dict[str, Any]) -> ImageInfo:
-        """Parse an image_item dict into ImageInfo."""
+        """Parse an image_item dict into ImageInfo.
+
+        ImageItem has a top-level ``aeskey`` field (raw hex string) that is
+        preferred over ``media.aes_key`` (base64-encoded) for decryption,
+        matching the official TypeScript SDK behaviour.
+        """
         media = cls._parse_media_info(raw.get("media", {}))
+        # Prefer image_item.aeskey (raw hex) over media.aes_key (base64)
+        raw_aeskey_hex = raw.get("aeskey", "")
+        if raw_aeskey_hex:
+            media = MediaInfo(
+                encrypt_query_param=media.encrypt_query_param,
+                aes_key=raw_aeskey_hex,
+                encrypt_type=media.encrypt_type,
+            )
         return ImageInfo(
             media=media,
             url=raw.get("url", ""),
