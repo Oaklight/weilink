@@ -78,6 +78,7 @@ nav:
   - Usage:
       - Installation: usage/installation.md
       - Quick Start: usage/quickstart.md
+      - Tips & Gotchas: usage/gotchas.md
   - API Reference:
       - WeiLink: api/client.md
       - Models: api/models.md
