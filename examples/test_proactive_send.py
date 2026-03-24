@@ -24,7 +24,9 @@ def main() -> None:
     wl.login()
 
     print(f"\nBot {wl.bot_id} is running.")
-    print("Send any message in WeChat to cache context_token, then I'll reply with 3 messages.\n")
+    print(
+        "Send any message in WeChat to cache context_token, then I'll reply with 3 messages.\n"
+    )
 
     # Wait for one message to get context_token
     user = None
@@ -32,7 +34,11 @@ def main() -> None:
         messages = wl.recv(timeout=35.0)
         for msg in messages:
             user = msg.from_user
-            logger.info("Got message from %s, context_token=%s", user, msg.context_token[:20] if msg.context_token else "None")
+            logger.info(
+                "Got message from %s, context_token=%s",
+                user,
+                msg.context_token[:20] if msg.context_token else "None",
+            )
             break
 
     # Send 3 consecutive messages
