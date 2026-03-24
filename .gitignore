@@ -35,5 +35,7 @@ _build/
 docs_en/
 docs_zh/
 
-# Weilink token (never commit credentials)
+# Weilink state (never commit credentials/session data)
 token.json
+contexts.json
+HANDOFF.md
