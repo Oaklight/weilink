@@ -74,6 +74,7 @@ class WeiLink:
                 token=data["token"],
             )
             self._cursor = data.get("cursor", "")
+            self._context_tokens = data.get("context_tokens", {})
             logger.info("Loaded credentials for %s", self._bot_info.bot_id)
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Failed to load state from %s: %s", self._token_path, e)
@@ -88,6 +89,7 @@ class WeiLink:
             "base_url": self._bot_info.base_url,
             "token": self._bot_info.token,
             "cursor": self._cursor,
+            "context_tokens": self._context_tokens,
         }
         self._token_path.write_text(json.dumps(data, indent=2))
 
