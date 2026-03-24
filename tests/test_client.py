@@ -2,6 +2,7 @@
 
 import json
 import tempfile
+import time
 from pathlib import Path
 
 from weilink.client import WeiLink
@@ -249,3 +250,111 @@ class TestParseMessage:
             raw = {"from_user_id": "", "item_list": []}
             msg = wl._parse_message(raw)
             assert msg is None
+
+
+class TestContextPersistence:
+    """Tests for experimental context_tokens persistence (contexts.json)."""
+
+    def test_save_and_load_contexts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            contexts_path = Path(tmpdir) / "contexts.json"
+
+            wl = WeiLink(token_path=token_path)
+            now = time.time()
+            wl._context_tokens = {"user1@im.wechat": "ctx_tok_1"}
+            wl._context_timestamps = {"user1@im.wechat": now}
+            wl._save_contexts()
+
+            assert contexts_path.exists()
+            data = json.loads(contexts_path.read_text())
+            assert "user1@im.wechat" in data
+            assert data["user1@im.wechat"]["t"] == "ctx_tok_1"
+            assert data["user1@im.wechat"]["ts"] == now
+
+            # Reload via a new client instance
+            wl2 = WeiLink(token_path=token_path)
+            assert wl2._context_tokens.get("user1@im.wechat") == "ctx_tok_1"
+            assert wl2._context_timestamps.get("user1@im.wechat") == now
+
+    def test_expired_contexts_discarded(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            contexts_path = Path(tmpdir) / "contexts.json"
+
+            stale_ts = time.time() - 25 * 3600  # 25 hours ago
+            fresh_ts = time.time() - 1 * 3600  # 1 hour ago
+            data = {
+                "stale_user@im.wechat": {"t": "old_ctx", "ts": stale_ts},
+                "fresh_user@im.wechat": {"t": "new_ctx", "ts": fresh_ts},
+            }
+            contexts_path.write_text(json.dumps(data))
+
+            wl = WeiLink(token_path=token_path)
+            assert "stale_user@im.wechat" not in wl._context_tokens
+            assert wl._context_tokens.get("fresh_user@im.wechat") == "new_ctx"
+
+    def test_token_json_does_not_contain_context_tokens(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+
+            wl = WeiLink(token_path=token_path)
+            wl._bot_info = BotInfo(
+                bot_id="test@im.bot",
+                base_url="https://example.com",
+                token="tok123",
+            )
+            wl._context_tokens = {"user@im.wechat": "ctx_tok"}
+            wl._save_state()
+
+            data = json.loads(token_path.read_text())
+            assert "context_tokens" not in data
+
+    def test_corrupted_contexts_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            contexts_path = Path(tmpdir) / "contexts.json"
+            contexts_path.write_text("not valid json")
+
+            # Should not raise; just logs a warning
+            wl = WeiLink(token_path=token_path)
+            assert wl._context_tokens == {}
+
+    def test_contexts_path_is_sibling_of_token_path(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "sub" / "token.json"
+            wl = WeiLink(token_path=token_path)
+            assert wl._contexts_path == Path(tmpdir) / "sub" / "contexts.json"
+
+    def test_per_user_latest_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+
+            wl = WeiLink(token_path=token_path)
+            now = time.time()
+            wl._context_tokens = {"user@im.wechat": "first_token"}
+            wl._context_timestamps = {"user@im.wechat": now - 100}
+            wl._save_contexts()
+
+            # Overwrite with a newer token
+            wl._context_tokens["user@im.wechat"] = "second_token"
+            wl._context_timestamps["user@im.wechat"] = now
+            wl._save_contexts()
+
+            wl2 = WeiLink(token_path=token_path)
+            assert wl2._context_tokens["user@im.wechat"] == "second_token"
+
+    def test_malformed_entry_skipped(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            contexts_path = Path(tmpdir) / "contexts.json"
+
+            data = {
+                "bad_user@im.wechat": "just_a_string",  # not a dict
+                "good_user@im.wechat": {"t": "tok", "ts": time.time()},
+            }
+            contexts_path.write_text(json.dumps(data))
+
+            wl = WeiLink(token_path=token_path)
+            assert "bad_user@im.wechat" not in wl._context_tokens
+            assert wl._context_tokens.get("good_user@im.wechat") == "tok"

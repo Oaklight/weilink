@@ -59,8 +59,10 @@ class WeiLink:
         self._bot_info: BotInfo | None = None
         self._cursor: str = ""
         self._context_tokens: dict[str, str] = {}
+        self._context_timestamps: dict[str, float] = {}
         self._typing_tickets: dict[str, str] = {}
         self._load_state()
+        self._load_contexts()
 
     def _load_state(self) -> None:
         """Load persisted bot credentials and cursor."""
@@ -74,7 +76,6 @@ class WeiLink:
                 token=data["token"],
             )
             self._cursor = data.get("cursor", "")
-            self._context_tokens = data.get("context_tokens", {})
             logger.info("Loaded credentials for %s", self._bot_info.bot_id)
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning("Failed to load state from %s: %s", self._token_path, e)
@@ -89,9 +90,60 @@ class WeiLink:
             "base_url": self._bot_info.base_url,
             "token": self._bot_info.token,
             "cursor": self._cursor,
-            "context_tokens": self._context_tokens,
         }
         self._token_path.write_text(json.dumps(data, indent=2))
+
+    @property
+    def _contexts_path(self) -> Path:
+        """Path to the contexts persistence file (sibling to token.json)."""
+        return self._token_path.parent / "contexts.json"
+
+    def _load_contexts(self) -> None:
+        """Load persisted context tokens, discarding entries older than 24h.
+
+        [Experimental] Context tokens are stored separately from bot
+        credentials in ``contexts.json`` with per-entry timestamps so that
+        stale entries can be auto-expired on load.
+        """
+        if not self._contexts_path.exists():
+            return
+        try:
+            data = json.loads(self._contexts_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning(
+                "Failed to load contexts from %s: %s", self._contexts_path, e
+            )
+            return
+
+        now = time.time()
+        expiry = 24 * 3600  # 24 hours in seconds
+        for user_id, entry in data.items():
+            if not isinstance(entry, dict):
+                continue
+            token = entry.get("t", "")
+            ts = entry.get("ts", 0.0)
+            if token and (now - ts) < expiry:
+                self._context_tokens[user_id] = token
+                self._context_timestamps[user_id] = ts
+
+        logger.debug(
+            "Loaded %d context token(s) from %s",
+            len(self._context_tokens),
+            self._contexts_path,
+        )
+
+    def _save_contexts(self) -> None:
+        """Persist current context tokens to disk.
+
+        [Experimental] Writes only when called explicitly (on context_token
+        change), not on every ``_save_state()`` call.
+        """
+        self._contexts_path.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            user_id: {"t": token, "ts": self._context_timestamps.get(user_id, 0.0)}
+            for user_id, token in self._context_tokens.items()
+        }
+        self._contexts_path.write_text(json.dumps(data, indent=2))
 
     @property
     def is_connected(self) -> bool:
@@ -206,6 +258,7 @@ class WeiLink:
             self._save_state()
 
         # Parse messages
+        context_changed = False
         messages: list[Message] = []
         for raw_msg in resp.get("msgs", []):
             # Only process user messages (message_type=1)
@@ -217,7 +270,12 @@ class WeiLink:
                 # Cache context_token for this user
                 if msg.context_token:
                     self._context_tokens[msg.from_user] = msg.context_token
+                    self._context_timestamps[msg.from_user] = time.time()
+                    context_changed = True
                 messages.append(msg)
+
+        if context_changed:
+            self._save_contexts()
 
         return messages
 
