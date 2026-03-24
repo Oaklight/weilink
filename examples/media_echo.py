@@ -56,7 +56,7 @@ def main() -> None:
                     try:
                         data = wl.download(msg)
                         logger.info("Downloaded image: %d bytes", len(data))
-                        ok = wl.send_image(user, data)
+                        ok = wl.send(user, image=data)
                         logger.info("Image echo: %s", "ok" if ok else "failed")
                     except Exception as e:
                         logger.error("Image handling failed: %s", e)
@@ -79,7 +79,7 @@ def main() -> None:
                                 user, f"[Voice {msg.voice.playtime}s]: {msg.voice.text}"
                             )
                         else:
-                            ok = wl.send_voice(user, data)
+                            ok = wl.send(user, voice=data)
                             logger.info("Voice echo: %s", "ok" if ok else "failed")
                     except Exception as e:
                         logger.error("Voice handling failed: %s", e)
@@ -92,7 +92,7 @@ def main() -> None:
                     try:
                         data = wl.download(msg)
                         logger.info("Downloaded file: %d bytes", len(data))
-                        ok = wl.send_file(user, data, fname)
+                        ok = wl.send(user, file=data, file_name=fname)
                         logger.info("File echo: %s", "ok" if ok else "failed")
                     except Exception as e:
                         logger.error("File handling failed: %s", e)
@@ -108,7 +108,7 @@ def main() -> None:
                     try:
                         data = wl.download(msg)
                         logger.info("Downloaded video: %d bytes", len(data))
-                        ok = wl.send_video(user, data)
+                        ok = wl.send(user, video=data)
                         logger.info("Video echo: %s", "ok" if ok else "failed")
                     except Exception as e:
                         logger.error("Video handling failed: %s", e)

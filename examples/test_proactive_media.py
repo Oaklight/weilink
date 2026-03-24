@@ -37,7 +37,7 @@ def main() -> None:
     with open(img_path, "rb") as f:
         img_data = f.read()
     print(f"  Image size: {len(img_data)} bytes")
-    ok = wl.send_image(USER, img_data)
+    ok = wl.send(USER, image=img_data)
     print(f"  Image: {'ok' if ok else 'FAILED'}")
     time.sleep(1)
 
@@ -47,7 +47,7 @@ def main() -> None:
     with open(pdf_path, "rb") as f:
         pdf_data = f.read()
     print(f"  File size: {len(pdf_data)} bytes")
-    ok = wl.send_file(USER, pdf_data, "2406.10149v2.pdf")
+    ok = wl.send(USER, file=pdf_data, file_name="2406.10149v2.pdf")
     print(f"  File: {'ok' if ok else 'FAILED'}")
     time.sleep(1)
 
@@ -58,7 +58,7 @@ def main() -> None:
         vid_data = f.read()
     print(f"  Video size: {len(vid_data)} bytes")
     try:
-        ok = wl.send_video(USER, vid_data)
+        ok = wl.send(USER, video=vid_data)
         print(f"  Video: {'ok' if ok else 'FAILED'}")
     except Exception as e:
         print(f"  Video: FAILED ({e})")
