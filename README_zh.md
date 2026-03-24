@@ -11,7 +11,7 @@
 
 ## 特性
 
-- **零依赖** — 纯 Python 标准库，无第三方依赖
+- **依赖精简** — 仅需 `pycryptodome` 用于 AES 媒体加密
 - **消息队列语义** — `login()` / `send()` / `recv()` 三个核心接口
 - **状态自动管理** — `context_token`、sync cursor 内部缓存，调用方无需关心
 - **凭证持久化** — 扫码登录后 token 自动保存，重启免登录
@@ -56,7 +56,6 @@ send()   →  回复消息（自动关联 context_token）
 
 - **不能主动发起对话** — 用户必须先给 ClawBot 发消息，bot 才能回复
 - **24 小时窗口** — 用户超过 24 小时未发消息，bot 的消息会被丢弃
-- **仅文本消息** — 当前版本不支持图片/文件/语音/视频
 - **腾讯可随时终止服务** — 不建议将核心业务完全依赖此协议
 
 ## API
@@ -65,7 +64,8 @@ send()   →  回复消息（自动关联 context_token）
 |------|------|
 | `login(force=False)` | 扫码登录，已有凭证则自动复用 |
 | `recv(timeout=35.0)` | 长轮询接收消息 |
-| `send(to, text)` | 发送文本消息，返回 `bool` |
+| `send(to, text, *, image, voice, file, video, file_name)` | 发送文本和/或媒体（图片/语音/文件/视频），返回 `bool` |
+| `download(msg)` | 下载收到的媒体消息 |
 | `send_typing(to)` | 显示"正在输入" |
 | `stop_typing(to)` | 取消"正在输入" |
 | `close()` | 保存状态并清理 |

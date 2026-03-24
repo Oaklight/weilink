@@ -11,7 +11,7 @@ Lightweight Python SDK for the WeChat iLink Bot protocol.
 
 ## Features
 
-- **Zero dependencies** — Pure Python standard library, no third-party packages
+- **Minimal dependencies** — Only requires `pycryptodome` for AES media encryption
 - **Message queue semantics** — Three core methods: `login()` / `send()` / `recv()`
 - **Automatic state management** — `context_token` and sync cursor handled internally
 - **Credential persistence** — Token saved after QR login, survives restarts
@@ -56,7 +56,6 @@ send()   →  Reply to a user (context_token auto-attached)
 
 - **Cannot initiate conversations** — User must message the bot first
 - **24-hour window** — Messages from the bot are discarded if the user hasn't sent anything in 24 hours
-- **Text only** — Current version does not support images/files/voice/video
 - **Service may be terminated** — Tencent can discontinue the iLink API at any time
 
 ## API
@@ -65,7 +64,8 @@ send()   →  Reply to a user (context_token auto-attached)
 |--------|-------------|
 | `login(force=False)` | QR code login, reuses existing credentials |
 | `recv(timeout=35.0)` | Long-poll for incoming messages |
-| `send(to, text)` | Send a text message, returns `bool` |
+| `send(to, text, *, image, voice, file, video, file_name)` | Send text and/or media (image/voice/file/video), returns `bool` |
+| `download(msg)` | Download media from a received message |
 | `send_typing(to)` | Show "typing" indicator |
 | `stop_typing(to)` | Cancel "typing" indicator |
 | `close()` | Save state and clean up |
