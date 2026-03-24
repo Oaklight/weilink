@@ -1,7 +1,6 @@
 """CDN media operations for iLink Bot protocol.
 
 Handles AES-128-ECB encryption/decryption and CDN upload/download.
-Requires pycryptodome for AES operations: pip install weilink[media]
 
 Not part of the public API.
 """
@@ -10,15 +9,16 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from collections.abc import Callable
 
-import logging
+from Crypto.Cipher import AES
 
 CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
 AES_BLOCK_SIZE = 16
@@ -27,26 +27,6 @@ UPLOAD_MAX_RETRIES = 3
 _URI_SAFE = "-_.!~*'()"
 
 logger = logging.getLogger(__name__)
-
-
-def _require_crypto() -> Any:
-    """Lazy-import AES from pycryptodome.
-
-    Returns:
-        The Crypto.Cipher.AES module.
-
-    Raises:
-        ImportError: If pycryptodome is not installed.
-    """
-    try:
-        from Crypto.Cipher import AES
-
-        return AES
-    except ImportError:
-        raise ImportError(
-            "Media support requires pycryptodome. "
-            "Install it with: pip install weilink[media]"
-        ) from None
 
 
 def _decode_aes_key(aes_key: str) -> bytes:
@@ -94,7 +74,6 @@ def aes_ecb_encrypt(data: bytes, key: bytes) -> bytes:
     Returns:
         Ciphertext bytes.
     """
-    AES = _require_crypto()
     cipher = AES.new(key, AES.MODE_ECB)
     return cipher.encrypt(_pkcs7_pad(data))
 
@@ -109,7 +88,6 @@ def aes_ecb_decrypt(data: bytes, key: bytes) -> bytes:
     Returns:
         Plaintext bytes.
     """
-    AES = _require_crypto()
     cipher = AES.new(key, AES.MODE_ECB)
     return _pkcs7_unpad(cipher.decrypt(data))
 

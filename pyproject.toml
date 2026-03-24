@@ -20,12 +20,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Communications :: Chat",
 ]
-dependencies = []
-
-[project.optional-dependencies]
-media = [
+dependencies = [
     "pycryptodome>=3.15",
 ]
+
+[project.optional-dependencies]
 dev = [
     "ruff>=0.1.0",
     "build>=1.2.2.post1",
