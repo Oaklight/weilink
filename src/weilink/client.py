@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import time
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -748,7 +749,7 @@ class WeiLink:
                     for remaining in futures:
                         remaining.cancel()
                     break
-        except TimeoutError:
+        except (TimeoutError, FuturesTimeoutError):
             pass
         finally:
             pool.shutdown(wait=False)
@@ -759,11 +760,16 @@ class WeiLink:
         """Long-poll a single session for messages."""
         assert session.bot_info is not None
 
-        resp = proto.get_updates(
-            cursor=session.cursor,
-            token=session.bot_info.token,
-            base_url=session.bot_info.base_url,
-        )
+        try:
+            resp = proto.get_updates(
+                cursor=session.cursor,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
+                timeout=timeout + 5,
+            )
+        except (TimeoutError, OSError):
+            # HTTP timeout — no messages arrived within the window
+            return []
 
         new_cursor = resp.get("get_updates_buf", "")
         if new_cursor:
