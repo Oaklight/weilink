@@ -5,6 +5,7 @@
 - 多会话支持 — 通过 `login(name="...")` 将一个 bot 注册到多个微信账号；`recv()` 并发轮询所有会话，`send()` 自动路由到正确的会话
 - CDN 预上传 API — `upload()` 预先上传媒体到 CDN，返回可复用的 `UploadedMedia` 引用
 - `send()` 现在接受 `UploadedMedia`，发送预上传的媒体无需重复上传
+- 新增 `MediaContent` 类型别名，简化媒体参数的类型注解
 
 ## v0.2.0 (2026-03-24)
 
