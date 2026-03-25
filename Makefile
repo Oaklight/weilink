@@ -1,4 +1,4 @@
-.PHONY: all build-package push-package clean-package build-docker push-docker clean-docker test lint format typecheck clean help
+.PHONY: all build-package push-package clean-package build-alias push-alias clean-alias build-docker push-docker clean-docker test lint format typecheck clean help
 
 DOCKER_IMAGE := oaklight/weilink
 VERSION := $(shell grep '__version__' src/weilink/__init__.py | head -1 | cut -d'"' -f2)
@@ -22,6 +22,24 @@ push-package:
 
 clean-package:
 	rm -rf dist/ build/ src/*.egg-info
+
+# ──────────────────────────────────────────────
+# Alias package (pyilink)
+# ──────────────────────────────────────────────
+
+build-alias:
+	@echo "Building pyilink alias package $(V)..."
+	@sed 's/version = "0.0.0"/version = "$(V)"/' pyilink/pyproject.toml > pyilink/pyproject.toml.tmp
+	@sed -i 's/weilink==0.0.0/weilink==$(V)/' pyilink/pyproject.toml.tmp
+	@mv pyilink/pyproject.toml.tmp pyilink/pyproject.toml.build
+	@cd pyilink && cp pyproject.toml pyproject.toml.bak && mv pyproject.toml.build pyproject.toml && python -m build --no-isolation && mv pyproject.toml.bak pyproject.toml
+	@echo "pyilink $(V) built successfully."
+
+push-alias:
+	twine upload pyilink/dist/*
+
+clean-alias:
+	rm -rf pyilink/dist/ pyilink/build/ pyilink/*.egg-info
 
 # ──────────────────────────────────────────────
 # Docker
@@ -91,6 +109,11 @@ help:
 	@echo "  build-package  - Build Python package"
 	@echo "  push-package   - Upload to PyPI"
 	@echo "  clean-package  - Remove build artifacts"
+	@echo ""
+	@echo "Alias (pyilink):"
+	@echo "  build-alias    - Build pyilink alias package"
+	@echo "  push-alias     - Upload pyilink to PyPI"
+	@echo "  clean-alias    - Remove pyilink build artifacts"
 	@echo ""
 	@echo "Docker:"
 	@echo "  build-docker   - Build Docker image (local x64)"
