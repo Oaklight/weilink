@@ -4,6 +4,8 @@
 
 ::: weilink.Message
 
+::: weilink.RefMessage
+
 ::: weilink.BotInfo
 
 ::: weilink.MediaInfo
@@ -19,3 +21,5 @@
 ::: weilink.MediaContent
 
 ::: weilink.UploadedMedia
+
+::: weilink.SendResult

@@ -91,7 +91,12 @@ nav:
   - Architecture: architecture.md
   - API Reference:
       - WeiLink: api/client.md
+      - Session: api/session.md
       - Models: api/models.md
   - Examples:
-      - Echo Bot: examples/echo_bot.md
+      - Simple Echo: examples/simple_echo.md
+      - AI Echo Bot: examples/echo_bot.md
+      - Media Echo: examples/media_echo.md
+      - Multi-Session Echo: examples/multi_echo.md
+      - Proactive Messaging: examples/proactive.md
   - Changelog: changelog.md
