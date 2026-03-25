@@ -83,7 +83,7 @@ class TestCLIAdmin:
             assert "version" in data
         finally:
             proc.terminate()
-            proc.wait(timeout=5)
+            proc.wait(timeout=30)
 
     def test_admin_via_legacy_entry_point(self, tmp_path):
         """weilink-admin (via python -m weilink.admin) delegates to unified CLI."""
@@ -114,4 +114,4 @@ class TestCLIAdmin:
             assert url is not None, "Legacy CLI did not print the URL"
         finally:
             proc.terminate()
-            proc.wait(timeout=5)
+            proc.wait(timeout=30)

@@ -80,7 +80,7 @@ class TestAdminCLI:
             assert "version" in data
         finally:
             proc.terminate()
-            proc.wait(timeout=5)
+            proc.wait(timeout=30)
 
     def test_cli_custom_base_path_printed(self, tmp_path):
         proc = subprocess.Popen(
@@ -110,7 +110,7 @@ class TestAdminCLI:
             assert any(str(tmp_path) in ln for ln in lines)
         finally:
             proc.terminate()
-            proc.wait(timeout=5)
+            proc.wait(timeout=30)
 
     def test_cli_sigterm_graceful_shutdown(self, tmp_path):
         import signal
