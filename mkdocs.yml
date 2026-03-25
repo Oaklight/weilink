@@ -86,6 +86,7 @@ nav:
       - Multi-Session: usage/multi_session.md
       - MCP Server: usage/mcp.md
       - OpenAPI Server: usage/openapi.md
+      - Admin Panel: usage/admin.md
       - CLI Reference: usage/cli.md
       - Docker Deployment: usage/docker.md
       - Tips & Gotchas: usage/gotchas.md
