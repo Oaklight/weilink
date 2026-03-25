@@ -54,6 +54,17 @@ wl.send(user, video=vid_data)
 wl.send(user, "看看这些照片", image=[img1, img2])
 ```
 
+## 引用消息
+
+当用户回复（引用）一条消息时，`msg.ref_msg` 包含被引用的内容：
+
+```python
+for msg in wl.recv():
+    if msg.ref_msg:
+        print(f"引用: {msg.ref_msg.text}")
+    print(f"消息: {msg.text}")
+```
+
 ## 输入状态指示
 
 ```python
