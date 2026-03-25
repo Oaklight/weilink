@@ -17,4 +17,4 @@ pip install -e .
 ## Requirements
 
 - Python >= 3.10
-- `pycryptodome` (installed automatically)
+- No external dependencies (AES uses OpenSSL via ctypes if available; pure-Python fallback included)

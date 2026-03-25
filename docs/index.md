@@ -13,7 +13,7 @@ Lightweight Python SDK for the WeChat iLink Bot protocol.
 
 ## Features
 
-- **Minimal dependencies** — Only requires `pycryptodome` for AES media encryption
+- **Zero runtime dependencies** — AES media encryption uses OpenSSL via ctypes with pure-Python fallback
 - **Message queue semantics** — `login()` / `send()` / `recv()`
 - **Automatic state management** — `context_token` and cursor handled internally
 - **Credential persistence** — Token saved after QR login
