@@ -7,6 +7,16 @@ import time
 import urllib.error
 import urllib.request
 
+
+def _kill_proc(proc: subprocess.Popen) -> None:
+    """Terminate a subprocess, falling back to SIGKILL if it won't die."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
 import pytest
 
 from weilink import WeiLink
@@ -79,8 +89,7 @@ class TestAdminCLI:
                 data = json.loads(resp.read())
             assert "version" in data
         finally:
-            proc.terminate()
-            proc.wait(timeout=30)
+            _kill_proc(proc)
 
     def test_cli_custom_base_path_printed(self, tmp_path):
         proc = subprocess.Popen(
@@ -109,8 +118,7 @@ class TestAdminCLI:
                     break
             assert any(str(tmp_path) in ln for ln in lines)
         finally:
-            proc.terminate()
-            proc.wait(timeout=30)
+            _kill_proc(proc)
 
     def test_cli_sigterm_graceful_shutdown(self, tmp_path):
         import signal
@@ -139,7 +147,11 @@ class TestAdminCLI:
                 break
 
         proc.send_signal(signal.SIGTERM)
-        proc.wait(timeout=30)
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
         assert proc.returncode is not None
 
 

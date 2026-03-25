@@ -5,6 +5,16 @@ import subprocess
 import sys
 
 
+def _kill_proc(proc: subprocess.Popen) -> None:
+    """Terminate a subprocess, falling back to SIGKILL if it won't die."""
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
 class TestCLIArgParsing:
     """Tests for CLI argument parsing without starting servers."""
 
@@ -82,8 +92,7 @@ class TestCLIAdmin:
                 data = json.loads(resp.read())
             assert "version" in data
         finally:
-            proc.terminate()
-            proc.wait(timeout=30)
+            _kill_proc(proc)
 
     def test_admin_via_legacy_entry_point(self, tmp_path):
         """weilink-admin (via python -m weilink.admin) delegates to unified CLI."""
@@ -113,5 +122,4 @@ class TestCLIAdmin:
                     break
             assert url is not None, "Legacy CLI did not print the URL"
         finally:
-            proc.terminate()
-            proc.wait(timeout=30)
+            _kill_proc(proc)
