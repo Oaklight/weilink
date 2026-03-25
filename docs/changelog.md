@@ -5,6 +5,7 @@
 - Multi-session support — register one bot with multiple WeChat accounts via `login(name="...")`; `recv()` polls all sessions concurrently, `send()` auto-routes to the correct session
 - CDN pre-upload API — `upload()` uploads media to CDN without sending, returns reusable `UploadedMedia` reference
 - `send()` now accepts `UploadedMedia` for sending pre-uploaded media without re-uploading
+- Add `MediaContent` type alias for cleaner media parameter annotations
 
 ## v0.2.0 (2026-03-24)
 
