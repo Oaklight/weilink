@@ -17,6 +17,7 @@ hide:
 - **消息队列语义** — `login()` / `send()` / `recv()`
 - **自动状态管理** — 内部处理 `context_token` 和游标
 - **凭证持久化** — 扫码登录后自动保存 Token
+- **MCP 服务器** — 可选的 [MCP](usage/mcp.md) 集成，供 AI agent 使用（`pip install weilink[mcp]`）
 
 ## 快速开始
 
