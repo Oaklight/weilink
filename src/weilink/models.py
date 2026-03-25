@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+from typing import Union
 
 
 class MessageType(IntEnum):
@@ -73,6 +74,12 @@ class UploadedMedia:
     file_size: int
     cipher_size: int
     file_name: str = ""
+
+
+#: Type alias for media content accepted by :meth:`WeiLink.send`.
+#: Can be raw ``bytes``, a pre-uploaded :class:`UploadedMedia` reference,
+#: or a list of either for batch sending.
+MediaContent = Union[bytes, UploadedMedia, list[Union[bytes, UploadedMedia]]]
 
 
 @dataclass(frozen=True)

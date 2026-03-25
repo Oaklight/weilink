@@ -16,6 +16,7 @@ from weilink.models import (
     BotInfo,
     FileInfo,
     ImageInfo,
+    MediaContent,
     MediaInfo,
     Message,
     MessageType,
@@ -602,11 +603,11 @@ class WeiLink:
         to: str,
         text: str | None = None,
         *,
-        image: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
-        voice: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
-        file: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
+        image: MediaContent | None = None,
+        voice: MediaContent | None = None,
+        file: MediaContent | None = None,
         file_name: str | list[str] = "",
-        video: bytes | UploadedMedia | list[bytes | UploadedMedia] | None = None,
+        video: MediaContent | None = None,
     ) -> bool:
         """Send a message to a user.
 
@@ -634,7 +635,7 @@ class WeiLink:
         """
 
         def _to_list(
-            v: bytes | UploadedMedia | list[bytes | UploadedMedia] | None,
+            v: MediaContent | None,
         ) -> list[bytes | UploadedMedia]:
             if v is None:
                 return []
