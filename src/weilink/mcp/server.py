@@ -1,16 +1,18 @@
-"""MCP server exposing WeiLink bot capabilities as tools."""
+"""MCP / OpenAPI server exposing WeiLink bot capabilities as tools.
+
+Uses ``toolregistry`` + ``toolregistry-server`` to define tools once and
+expose them via both MCP and OpenAPI protocols.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
-
-if TYPE_CHECKING:
-    from mcp.server.fastmcp import FastMCP
+from typing import Any, Literal
 
 from weilink import Message, MessageType, WeiLink
 from weilink._protocol import ILinkError, SessionExpiredError
@@ -90,11 +92,11 @@ def _serialize_message(msg: Message) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------
-# Tool functions (registered dynamically via _register_tools)
+# Tool functions (registered via toolregistry)
 # ------------------------------------------------------------------
 
 
-def recv_messages(timeout: float = 5.0) -> str:
+async def recv_messages(timeout: float = 5.0) -> str:
     """Receive new messages from WeChat users.
 
     Long-polls all active sessions and returns any pending messages.
@@ -112,9 +114,11 @@ def recv_messages(timeout: float = 5.0) -> str:
         return json.dumps({"error": "Not logged in. Use login tool first."})
 
     try:
-        messages = wl.recv(timeout=timeout)
+        messages = await asyncio.to_thread(wl.recv, timeout=timeout)
     except SessionExpiredError:
         return json.dumps({"error": "Session expired. Please re-login."})
+    except (TimeoutError, OSError):
+        messages = []
     except RuntimeError as e:
         return json.dumps({"error": str(e)})
 
@@ -122,7 +126,7 @@ def recv_messages(timeout: float = 5.0) -> str:
     return json.dumps([_serialize_message(m) for m in messages])
 
 
-def send_message(
+async def send_message(
     to: str,
     text: str = "",
     image_path: str = "",
@@ -185,14 +189,14 @@ def send_message(
         return json.dumps({"error": "No content provided."})
 
     try:
-        ok = wl.send(to, **kwargs)
+        ok = await asyncio.to_thread(wl.send, to, **kwargs)
     except (RuntimeError, ValueError) as e:
         return json.dumps({"error": str(e)})
 
     return json.dumps({"success": ok})
 
 
-def download_media(message_id: str, save_dir: str = "") -> str:
+async def download_media(message_id: str, save_dir: str = "") -> str:
     """Download media from a previously received message.
 
     The message must have been received via recv_messages in this session.
@@ -215,7 +219,7 @@ def download_media(message_id: str, save_dir: str = "") -> str:
 
     wl = _get_client()
     try:
-        data = wl.download(msg)
+        data = await asyncio.to_thread(wl.download, msg)
     except ValueError as e:
         return json.dumps({"error": str(e)})
 
@@ -267,7 +271,7 @@ def list_sessions() -> str:
     return json.dumps(sessions)
 
 
-def login(session_name: str = "") -> str:
+async def login(session_name: str = "") -> str:
     """Start a QR code login flow.
 
     Returns a QR code URL that the user must open in a browser and scan
@@ -284,7 +288,7 @@ def login(session_name: str = "") -> str:
     from weilink import _protocol as proto
 
     try:
-        qr_resp = proto.get_qr_code()
+        qr_resp = await asyncio.to_thread(proto.get_qr_code)
     except ILinkError as e:
         return json.dumps({"error": f"Failed to get QR code: {e}"})
 
@@ -306,7 +310,7 @@ def login(session_name: str = "") -> str:
     )
 
 
-def check_login() -> str:
+async def check_login() -> str:
     """Check the status of a pending QR code login.
 
     Must be called after login. Polls the server once and returns
@@ -331,7 +335,7 @@ def check_login() -> str:
         return json.dumps({"status": "expired", "message": "Login timed out."})
 
     try:
-        status_resp = proto.poll_qr_status(qrcode)
+        status_resp = await asyncio.to_thread(proto.poll_qr_status, qrcode)
     except (ILinkError, TimeoutError, OSError) as e:
         return json.dumps({"status": "pending", "message": f"Poll error: {e}"})
 
@@ -393,7 +397,7 @@ def check_login() -> str:
 
 
 # ------------------------------------------------------------------
-# Server construction and entry points
+# Registry and server entry points
 # ------------------------------------------------------------------
 
 _TOOL_FUNCTIONS = [
@@ -406,10 +410,18 @@ _TOOL_FUNCTIONS = [
 ]
 
 
-def _register_tools(server: FastMCP) -> None:
-    """Register all WeiLink tools on a FastMCP server instance."""
+def build_registry():
+    """Build a ToolRegistry with all WeiLink tool functions.
+
+    Returns:
+        A configured ToolRegistry instance.
+    """
+    from toolregistry import ToolRegistry
+
+    registry = ToolRegistry(name="weilink")
     for fn in _TOOL_FUNCTIONS:
-        server.tool()(fn)
+        registry.register(fn)
+    return registry
 
 
 def run_mcp(
@@ -426,12 +438,50 @@ def run_mcp(
         port: Port for SSE / streamable-http transports.
         base_path: Optional WeiLink data directory.
     """
-    from mcp.server.fastmcp import FastMCP
+    from toolregistry_server import RouteTable
+    from toolregistry_server.mcp import (
+        create_mcp_server,
+        run_sse,
+        run_stdio,
+        run_streamable_http,
+    )
 
     _init_client(base_path)
-    server = FastMCP("weilink", host=host, port=port)
-    _register_tools(server)
-    server.run(transport=transport)
+    route_table = RouteTable(build_registry())
+    server = create_mcp_server(route_table, name="weilink")
+
+    if transport == "stdio":
+        asyncio.run(run_stdio(server))
+    elif transport == "sse":
+        asyncio.run(run_sse(server, host=host, port=port))
+    else:
+        asyncio.run(run_streamable_http(server, host=host, port=port))
+
+
+def run_openapi(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    base_path: Path | None = None,
+) -> None:
+    """Run the OpenAPI server.
+
+    Args:
+        host: Host address to bind to.
+        port: Port to bind to.
+        base_path: Optional WeiLink data directory.
+    """
+    import uvicorn
+    from toolregistry_server import RouteTable
+    from toolregistry_server.openapi import create_openapi_app
+
+    _init_client(base_path)
+    route_table = RouteTable(build_registry())
+    app = create_openapi_app(
+        route_table,
+        title="WeiLink",
+        description="WeiLink Bot API Tools",
+    )
+    uvicorn.run(app, host=host, port=port)
 
 
 def main() -> None:
