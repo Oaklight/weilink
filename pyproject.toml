@@ -76,3 +76,4 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "weilink" = ["py.typed"]
+"weilink.admin" = ["*.html", "locales/*.json"]

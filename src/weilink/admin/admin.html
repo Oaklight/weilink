@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title data-i18n="app.title">WeiLink Admin</title>
+<style>
+:root {
+  --bg-primary: #F5F5F5;
+  --bg-secondary: #FFFFFF;
+  --bg-hover: #F0F0F0;
+  --text-primary: #1A1A1A;
+  --text-secondary: #666666;
+  --text-muted: #999999;
+  --border: #E0E0E0;
+  --accent: #07C160;
+  --accent-hover: #06AD56;
+  --accent-light: rgba(7, 193, 96, 0.1);
+  --danger: #DC3545;
+  --danger-hover: #C82333;
+  --warning: #FFC107;
+  --success: #07C160;
+  --radius: 8px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.12);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* Header */
+.header {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.header-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.status-dot.connected { background: var(--success); }
+.status-dot.disconnected { background: var(--danger); }
+
+.lang-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s;
+}
+.btn-icon {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s;
+}
+.btn-icon:hover { background: var(--bg-hover); }
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+.btn-danger:hover { background: var(--danger); color: #fff; }
+.btn-secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { background: var(--bg-hover); }
+
+/* Main */
+.main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* Status cards */
+.status-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.status-card {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+.status-card-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-top: 4px;
+}
+
+/* Sessions section */
+.section {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.section-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Table */
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg-hover); }
+
+/* Badge */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.badge-success { background: var(--accent-light); color: var(--accent); }
+.badge-danger { background: rgba(220,53,69,0.1); color: var(--danger); }
+.badge-warning { background: rgba(255,193,7,0.1); color: #856404; }
+
+/* User detail rows */
+.user-row td {
+  padding: 8px 16px 8px 40px;
+  background: var(--bg-primary);
+  font-size: 13px;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+}
+
+/* Modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: var(--shadow-lg);
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+.modal-body { margin-bottom: 20px; }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.form-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: var(--font);
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-light);
+}
+
+/* QR Code display */
+.qr-container {
+  text-align: center;
+  padding: 16px;
+}
+.qr-container img {
+  width: 200px;
+  height: 200px;
+  image-rendering: pixelated;
+}
+.qr-status {
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.qr-status.success { color: var(--success); font-weight: 600; }
+.qr-status.error { color: var(--danger); }
+
+/* Toast */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-lg);
+  font-size: 14px;
+  animation: slideIn 0.3s ease;
+  border-left: 3px solid var(--accent);
+}
+.toast.error { border-left-color: var(--danger); }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main { padding: 16px; }
+  .header { padding: 12px 16px; }
+  .status-cards { grid-template-columns: repeat(2, 1fr); }
+  td, th { padding: 8px 12px; }
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-left">
+    <div>
+      <div class="header-title" data-i18n="app.title">WeiLink Admin</div>
+      <div class="header-subtitle" id="versionText"></div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="status-dot disconnected" id="statusDot"></span>
+    <span id="statusText" data-i18n="header.disconnected">Disconnected</span>
+    <select class="lang-select" id="langSelect" onchange="i18n.switchLanguage(this.value)">
+      <option value="en">English</option>
+      <option value="zh">中文</option>
+    </select>
+    <button class="btn-icon" onclick="refreshAll()" data-i18n-title="header.refresh" title="Refresh">&#x21bb;</button>
+  </div>
+</header>
+
+<main class="main">
+  <div class="status-cards">
+    <div class="status-card">
+      <div class="status-card-label" data-i18n="status.total_sessions">Total Sessions</div>
+      <div class="status-card-value" id="statTotalSessions">0</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label" data-i18n="status.connected_sessions">Connected</div>
+      <div class="status-card-value" id="statConnected">0</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label" data-i18n="status.total_users">Total Users</div>
+      <div class="status-card-value" id="statTotalUsers">0</div>
+    </div>
+    <div class="status-card">
+      <div class="status-card-label" data-i18n="status.active_users">Active Users</div>
+      <div class="status-card-value" id="statActiveUsers">0</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="section-title" data-i18n="sessions.title">Sessions</span>
+      <button class="btn btn-primary" onclick="openLoginModal()" data-i18n="login.new_login">New Login</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="sessions.name">Session</th>
+            <th data-i18n="sessions.bot_id">Bot ID</th>
+            <th data-i18n="sessions.status">Status</th>
+            <th data-i18n="sessions.users">Users</th>
+            <th data-i18n="sessions.actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="sessionsBody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="emptyState" style="display:none" data-i18n="sessions.no_sessions">
+      No sessions registered
+    </div>
+  </div>
+</main>
+
+<!-- Login Modal -->
+<div class="modal-overlay" id="loginModal">
+  <div class="modal">
+    <div class="modal-title" data-i18n="login.new_login">New Login</div>
+    <div class="modal-body">
+      <!-- Step 1: Name input -->
+      <div id="loginStep1">
+        <div class="form-group">
+          <label class="form-label" data-i18n="login.session_name">Session Name</label>
+          <input class="form-input" id="loginNameInput" type="text"
+                 data-i18n-placeholder="login.session_name_placeholder"
+                 placeholder="Enter session name (leave empty for default)">
+        </div>
+      </div>
+      <!-- Step 2: QR code display -->
+      <div id="loginStep2" style="display:none">
+        <div class="qr-container">
+          <img id="qrImage" src="" alt="QR Code">
+          <div class="qr-status" id="qrStatus" data-i18n="login.waiting">Waiting for scan...</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeLoginModal()" data-i18n="login.cancel">Cancel</button>
+      <button class="btn btn-primary" id="loginStartBtn" onclick="startLogin()" data-i18n="login.start">Start Login</button>
+      <button class="btn btn-primary" id="loginRefreshBtn" onclick="refreshQR()" style="display:none" data-i18n="login.refresh_qr">Refresh QR Code</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ============================================================
+// i18n
+// ============================================================
+class I18n {
+  constructor() {
+    this.currentLang = 'en';
+    this.translations = {};
+    this.fallback = {};
+    this.storageKey = 'weilink-admin-lang';
+  }
+
+  async init() {
+    // Detect language
+    const saved = localStorage.getItem(this.storageKey);
+    if (saved && (saved === 'en' || saved === 'zh')) {
+      this.currentLang = saved;
+    } else {
+      const nav = navigator.language || '';
+      this.currentLang = nav.startsWith('zh') ? 'zh' : 'en';
+    }
+
+    // Load fallback (en) and current
+    this.fallback = await this._load('en');
+    if (this.currentLang !== 'en') {
+      this.translations = await this._load(this.currentLang);
+    } else {
+      this.translations = this.fallback;
+    }
+
+    document.getElementById('langSelect').value = this.currentLang;
+    document.documentElement.lang = this.currentLang;
+    this.updatePage();
+  }
+
+  async switchLanguage(lang) {
+    this.currentLang = lang;
+    localStorage.setItem(this.storageKey, lang);
+    if (lang === 'en') {
+      this.translations = this.fallback;
+    } else {
+      this.translations = await this._load(lang);
+    }
+    document.documentElement.lang = lang;
+    this.updatePage();
+  }
+
+  t(key, params = {}) {
+    let val = this._resolve(key, this.translations) || this._resolve(key, this.fallback) || key;
+    for (const [k, v] of Object.entries(params)) {
+      val = val.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), v);
+    }
+    return val;
+  }
+
+  _resolve(key, obj) {
+    return key.split('.').reduce((o, k) => o && o[k], obj);
+  }
+
+  updatePage() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      el.textContent = this.t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      el.placeholder = this.t(el.getAttribute('data-i18n-placeholder'));
+    });
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+      el.title = this.t(el.getAttribute('data-i18n-title'));
+    });
+    document.title = this.t('app.title');
+  }
+
+  async _load(lang) {
+    try {
+      const resp = await fetch(`/locales/${lang}.json`);
+      if (resp.ok) return await resp.json();
+    } catch (e) { /* fallback */ }
+    return {};
+  }
+}
+
+const i18n = new I18n();
+
+// ============================================================
+// API client
+// ============================================================
+class WeiLinkAPI {
+  constructor(baseUrl = '') {
+    this.baseUrl = baseUrl;
+  }
+
+  async request(path, options = {}) {
+    const resp = await fetch(this.baseUrl + path, {
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    return resp.json();
+  }
+
+  async getStatus() { return this.request('/api/status'); }
+  async getSessions() { return this.request('/api/sessions'); }
+
+  async startLogin(name) {
+    return this.request('/api/sessions/login', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async pollLogin(qrcode) {
+    return this.request(`/api/sessions/login/status?qrcode=${encodeURIComponent(qrcode)}`);
+  }
+
+  async logout(name) {
+    return this.request(`/api/sessions/${encodeURIComponent(name)}/logout`, { method: 'POST' });
+  }
+
+  async rename(name, newName) {
+    return this.request(`/api/sessions/${encodeURIComponent(name)}/rename`, {
+      method: 'POST',
+      body: JSON.stringify({ new_name: newName }),
+    });
+  }
+}
+
+const api = new WeiLinkAPI();
+
+// ============================================================
+// State
+// ============================================================
+let pollInterval = null;
+let refreshTimer = null;
+let currentQRCode = null;
+
+// ============================================================
+// Time formatting
+// ============================================================
+function formatTime(ts) {
+  if (!ts || ts <= 0) return i18n.t('time.never');
+  const diff = (Date.now() / 1000) - ts;
+  if (diff < 60) return i18n.t('time.just_now');
+  if (diff < 3600) return i18n.t('time.minutes_ago', { n: Math.floor(diff / 60) });
+  if (diff < 86400) return i18n.t('time.hours_ago', { n: Math.floor(diff / 3600) });
+  return i18n.t('time.days_ago', { n: Math.floor(diff / 86400) });
+}
+
+// ============================================================
+// Render
+// ============================================================
+function renderSessions(data) {
+  const sessions = data.sessions || [];
+  const tbody = document.getElementById('sessionsBody');
+  const empty = document.getElementById('emptyState');
+
+  if (sessions.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Stats
+  let totalUsers = 0, activeUsers = 0;
+  sessions.forEach(s => {
+    totalUsers += s.user_count;
+    s.users.forEach(u => { if (u.fresh) activeUsers++; });
+  });
+  document.getElementById('statTotalSessions').textContent = sessions.length;
+  document.getElementById('statConnected').textContent = sessions.filter(s => s.connected).length;
+  document.getElementById('statTotalUsers').textContent = totalUsers;
+  document.getElementById('statActiveUsers').textContent = activeUsers;
+
+  let html = '';
+  sessions.forEach(s => {
+    const statusBadge = s.connected
+      ? `<span class="badge badge-success" data-i18n="sessions.connected">${i18n.t('sessions.connected')}</span>`
+      : `<span class="badge badge-danger" data-i18n="sessions.not_connected">${i18n.t('sessions.not_connected')}</span>`;
+
+    const expandBtn = s.user_count > 0
+      ? `<button class="btn btn-secondary" onclick="toggleUsers('${s.name}')" data-i18n="sessions.show_users">${i18n.t('sessions.show_users')}</button>`
+      : '';
+
+    const actions = [];
+    if (s.connected) {
+      actions.push(`<button class="btn btn-secondary" onclick="renameSession('${s.name}')" data-i18n="actions.rename">${i18n.t('actions.rename')}</button>`);
+      actions.push(`<button class="btn btn-danger" onclick="logoutSession('${s.name}')" data-i18n="actions.logout">${i18n.t('actions.logout')}</button>`);
+    }
+
+    html += `<tr id="session-row-${s.name}">
+      <td><strong>${escapeHtml(s.name)}</strong></td>
+      <td style="font-family:monospace;font-size:12px">${s.bot_id || '—'}</td>
+      <td>${statusBadge}</td>
+      <td>${s.user_count} ${expandBtn}</td>
+      <td>${actions.join(' ')}</td>
+    </tr>`;
+
+    // User detail rows (hidden by default)
+    if (s.users.length > 0) {
+      s.users.forEach(u => {
+        const freshBadge = u.fresh
+          ? `<span class="badge badge-success">${i18n.t('users.fresh')}</span>`
+          : `<span class="badge badge-warning">${i18n.t('users.expired')}</span>`;
+        html += `<tr class="user-row user-rows-${s.name}" style="display:none">
+          <td colspan="2" style="font-family:monospace;font-size:12px">${escapeHtml(u.user_id)}</td>
+          <td>${freshBadge}</td>
+          <td>${formatTime(u.last_interaction)}</td>
+          <td></td>
+        </tr>`;
+      });
+    }
+  });
+  tbody.innerHTML = html;
+}
+
+function toggleUsers(name) {
+  const rows = document.querySelectorAll(`.user-rows-${CSS.escape(name)}`);
+  const visible = rows.length > 0 && rows[0].style.display !== 'none';
+  rows.forEach(r => r.style.display = visible ? 'none' : '');
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ============================================================
+// Actions
+// ============================================================
+async function refreshAll() {
+  try {
+    const [status, sessions] = await Promise.all([api.getStatus(), api.getSessions()]);
+    document.getElementById('versionText').textContent = `v${status.version}`;
+    const dot = document.getElementById('statusDot');
+    const text = document.getElementById('statusText');
+    if (status.is_connected) {
+      dot.className = 'status-dot connected';
+      text.textContent = i18n.t('header.connected');
+    } else {
+      dot.className = 'status-dot disconnected';
+      text.textContent = i18n.t('header.disconnected');
+    }
+    renderSessions(sessions);
+  } catch (e) {
+    showToast(e.message, true);
+  }
+}
+
+async function logoutSession(name) {
+  if (!confirm(i18n.t('actions.confirm_logout', { name }))) return;
+  try {
+    const resp = await api.logout(name);
+    if (resp.error) { showToast(resp.error, true); return; }
+    showToast(resp.message);
+    refreshAll();
+  } catch (e) { showToast(e.message, true); }
+}
+
+async function renameSession(name) {
+  const newName = prompt(i18n.t('actions.rename_prompt', { name }));
+  if (!newName || !newName.trim()) return;
+  try {
+    const resp = await api.rename(name, newName.trim());
+    if (resp.error) { showToast(resp.error, true); return; }
+    showToast(resp.message);
+    refreshAll();
+  } catch (e) { showToast(e.message, true); }
+}
+
+// ============================================================
+// Login flow
+// ============================================================
+function openLoginModal() {
+  document.getElementById('loginModal').classList.add('active');
+  document.getElementById('loginStep1').style.display = '';
+  document.getElementById('loginStep2').style.display = 'none';
+  document.getElementById('loginStartBtn').style.display = '';
+  document.getElementById('loginRefreshBtn').style.display = 'none';
+  document.getElementById('loginNameInput').value = '';
+  document.getElementById('loginNameInput').focus();
+}
+
+function closeLoginModal() {
+  document.getElementById('loginModal').classList.remove('active');
+  if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+  currentQRCode = null;
+}
+
+async function startLogin() {
+  const name = document.getElementById('loginNameInput').value.trim();
+  try {
+    const resp = await api.startLogin(name);
+    if (resp.error) { showToast(resp.error, true); return; }
+
+    currentQRCode = resp.qrcode;
+
+    document.getElementById('loginStep1').style.display = 'none';
+    document.getElementById('loginStep2').style.display = '';
+    document.getElementById('loginStartBtn').style.display = 'none';
+
+    if (resp.qr_svg) {
+      document.getElementById('qrImage').src = resp.qr_svg;
+    }
+    document.getElementById('qrStatus').textContent = i18n.t('login.waiting');
+    document.getElementById('qrStatus').className = 'qr-status';
+
+    // Start polling
+    pollInterval = setInterval(() => pollLogin(), 2000);
+    // 5-minute deadline
+    setTimeout(() => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+        document.getElementById('qrStatus').textContent = i18n.t('login.expired');
+        document.getElementById('qrStatus').className = 'qr-status error';
+        document.getElementById('loginRefreshBtn').style.display = '';
+      }
+    }, 300000);
+  } catch (e) { showToast(e.message, true); }
+}
+
+async function pollLogin() {
+  if (!currentQRCode) return;
+  try {
+    const resp = await api.pollLogin(currentQRCode);
+    const statusEl = document.getElementById('qrStatus');
+
+    if (resp.status === 'confirmed') {
+      clearInterval(pollInterval); pollInterval = null;
+      statusEl.textContent = i18n.t('login.confirmed');
+      statusEl.className = 'qr-status success';
+      showToast(`${i18n.t('login.confirmed')} (${resp.session_name})`);
+      setTimeout(() => { closeLoginModal(); refreshAll(); }, 1500);
+    } else if (resp.status === 'scaned') {
+      statusEl.textContent = i18n.t('login.scanned');
+    } else if (resp.status === 'expired') {
+      clearInterval(pollInterval); pollInterval = null;
+      statusEl.textContent = i18n.t('login.expired');
+      statusEl.className = 'qr-status error';
+      document.getElementById('loginRefreshBtn').style.display = '';
+    }
+    // "waiting" — do nothing, keep polling
+  } catch (e) { /* ignore transient errors */ }
+}
+
+async function refreshQR() {
+  document.getElementById('loginRefreshBtn').style.display = 'none';
+  const name = document.getElementById('loginNameInput').value.trim();
+  try {
+    const resp = await api.startLogin(name);
+    if (resp.error) { showToast(resp.error, true); return; }
+    currentQRCode = resp.qrcode;
+    if (resp.qr_svg) document.getElementById('qrImage').src = resp.qr_svg;
+    document.getElementById('qrStatus').textContent = i18n.t('login.waiting');
+    document.getElementById('qrStatus').className = 'qr-status';
+    pollInterval = setInterval(() => pollLogin(), 2000);
+  } catch (e) { showToast(e.message, true); }
+}
+
+// ============================================================
+// Toast
+// ============================================================
+function showToast(message, isError = false) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast' + (isError ? ' error' : '');
+  toast.textContent = message;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
+// ============================================================
+// Init
+// ============================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  await i18n.init();
+  refreshAll();
+  // Auto-refresh every 30s
+  refreshTimer = setInterval(refreshAll, 30000);
+});
+
+// Close modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLoginModal();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+{
+  "app": {
+    "title": "WeiLink Admin",
+    "subtitle": "Bot Management Panel"
+  },
+  "header": {
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "refresh": "Refresh"
+  },
+  "status": {
+    "total_sessions": "Total Sessions",
+    "connected_sessions": "Connected",
+    "total_users": "Total Users",
+    "active_users": "Active Users"
+  },
+  "sessions": {
+    "title": "Sessions",
+    "name": "Session",
+    "bot_id": "Bot ID",
+    "status": "Status",
+    "users": "Users",
+    "actions": "Actions",
+    "no_sessions": "No sessions registered",
+    "connected": "Connected",
+    "not_connected": "Not Connected",
+    "show_users": "Show Users",
+    "hide_users": "Hide Users"
+  },
+  "users": {
+    "user_id": "User ID",
+    "last_interaction": "Last Interaction",
+    "fresh": "Active",
+    "expired": "Expired",
+    "no_users": "No users in this session"
+  },
+  "login": {
+    "new_login": "New Login",
+    "session_name": "Session Name",
+    "session_name_placeholder": "Enter session name (leave empty for default)",
+    "start": "Start Login",
+    "cancel": "Cancel",
+    "scan_qr": "Scan with WeChat",
+    "waiting": "Waiting for scan...",
+    "scanned": "Scanned, confirm on phone...",
+    "confirmed": "Login successful!",
+    "expired": "QR code expired",
+    "refresh_qr": "Refresh QR Code",
+    "error": "Login failed"
+  },
+  "actions": {
+    "logout": "Logout",
+    "rename": "Rename",
+    "confirm_logout": "Logout session \"{{name}}\"?",
+    "rename_prompt": "New name for session \"{{name}}\":",
+    "success": "Success",
+    "failed": "Failed"
+  },
+  "time": {
+    "just_now": "Just now",
+    "minutes_ago": "{{n}}m ago",
+    "hours_ago": "{{n}}h ago",
+    "days_ago": "{{n}}d ago",
+    "never": "Never"
+  }
+}

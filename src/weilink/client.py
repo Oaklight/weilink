@@ -102,6 +102,7 @@ class WeiLink:
         )
 
         self._sessions: dict[str, _Session] = {}
+        self._admin_server: Any = None
         self._default_session = self._create_session(_DEFAULT_SESSION, default_token)
 
         # Auto-discover named sessions from disk
@@ -782,7 +783,6 @@ class WeiLink:
             Decrypted file bytes.
 
         Raises:
-            ImportError: If pycryptodome is not installed.
             ValueError: If the message has no downloadable media.
         """
         from weilink._cdn import download_media
@@ -876,8 +876,32 @@ class WeiLink:
     # Lifecycle
     # ------------------------------------------------------------------
 
+    def start_admin(self, host: str = "127.0.0.1", port: int = 8080) -> Any:
+        """Start the admin panel HTTP server in a background thread.
+
+        Args:
+            host: Host address to bind to.
+            port: Port number.
+
+        Returns:
+            AdminInfo with host, port, url.
+        """
+        from weilink.admin import AdminServer
+
+        if self._admin_server and self._admin_server.is_running():
+            return self._admin_server.get_info()
+        self._admin_server = AdminServer(self, host=host, port=port)
+        return self._admin_server.start()
+
+    def stop_admin(self) -> None:
+        """Stop the admin panel server."""
+        if self._admin_server:
+            self._admin_server.stop()
+            self._admin_server = None
+
     def close(self) -> None:
         """Save state for all sessions and clean up."""
+        self.stop_admin()
         for session in self._sessions.values():
             self._save_session_state(session)
 
