@@ -7,16 +7,15 @@ import logging
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from mcp.server.fastmcp import FastMCP
+if TYPE_CHECKING:
+    from mcp.server.fastmcp import FastMCP
 
 from weilink import Message, MessageType, WeiLink
 from weilink._protocol import ILinkError, SessionExpiredError
 
 logger = logging.getLogger(__name__)
-
-mcp = FastMCP("weilink")
 
 _MAX_CACHE = 1000
 _DEFAULT_DOWNLOAD_DIR = Path.home() / ".weilink" / "downloads"
@@ -25,6 +24,16 @@ _DEFAULT_DOWNLOAD_DIR = Path.home() / ".weilink" / "downloads"
 _wl: WeiLink | None = None
 _message_cache: OrderedDict[str, Message] = OrderedDict()
 _pending_login: dict[str, Any] | None = None
+
+
+def _init_client(base_path: Path | None = None) -> None:
+    """Pre-initialize the global WeiLink client with optional *base_path*."""
+    global _wl
+    if _wl is None:
+        kwargs: dict[str, Any] = {}
+        if base_path is not None:
+            kwargs["base_path"] = base_path
+        _wl = WeiLink(**kwargs)
 
 
 def _get_client() -> WeiLink:
@@ -81,11 +90,10 @@ def _serialize_message(msg: Message) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------
-# Tools
+# Tool functions (registered dynamically via _register_tools)
 # ------------------------------------------------------------------
 
 
-@mcp.tool()
 def recv_messages(timeout: float = 5.0) -> str:
     """Receive new messages from WeChat users.
 
@@ -114,7 +122,6 @@ def recv_messages(timeout: float = 5.0) -> str:
     return json.dumps([_serialize_message(m) for m in messages])
 
 
-@mcp.tool()
 def send_message(
     to: str,
     text: str = "",
@@ -185,7 +192,6 @@ def send_message(
     return json.dumps({"success": ok})
 
 
-@mcp.tool()
 def download_media(message_id: str, save_dir: str = "") -> str:
     """Download media from a previously received message.
 
@@ -241,7 +247,6 @@ def _media_filename(msg: Message) -> str:
     return f"{msg.message_id}{ext}"
 
 
-@mcp.tool()
 def list_sessions() -> str:
     """List all WeiLink sessions and their connection status.
 
@@ -262,7 +267,6 @@ def list_sessions() -> str:
     return json.dumps(sessions)
 
 
-@mcp.tool()
 def login(session_name: str = "") -> str:
     """Start a QR code login flow.
 
@@ -302,7 +306,6 @@ def login(session_name: str = "") -> str:
     )
 
 
-@mcp.tool()
 def check_login() -> str:
     """Check the status of a pending QR code login.
 
@@ -390,10 +393,47 @@ def check_login() -> str:
 
 
 # ------------------------------------------------------------------
-# Entry point
+# Server construction and entry points
 # ------------------------------------------------------------------
+
+_TOOL_FUNCTIONS = [
+    recv_messages,
+    send_message,
+    download_media,
+    list_sessions,
+    login,
+    check_login,
+]
+
+
+def _register_tools(server: FastMCP) -> None:
+    """Register all WeiLink tools on a FastMCP server instance."""
+    for fn in _TOOL_FUNCTIONS:
+        server.tool()(fn)
+
+
+def run_mcp(
+    transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    base_path: Path | None = None,
+) -> None:
+    """Run the MCP server with the specified transport.
+
+    Args:
+        transport: One of ``"stdio"``, ``"sse"``, ``"streamable-http"``.
+        host: Host address for SSE / streamable-http transports.
+        port: Port for SSE / streamable-http transports.
+        base_path: Optional WeiLink data directory.
+    """
+    from mcp.server.fastmcp import FastMCP
+
+    _init_client(base_path)
+    server = FastMCP("weilink", host=host, port=port)
+    _register_tools(server)
+    server.run(transport=transport)
 
 
 def main() -> None:
     """Run the WeiLink MCP server (stdio transport)."""
-    mcp.run(transport="stdio")
+    run_mcp(transport="stdio")

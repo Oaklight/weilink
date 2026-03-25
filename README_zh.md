@@ -17,6 +17,7 @@
 - **状态自动管理** — `context_token`、sync cursor 内部缓存，调用方无需关心
 - **凭证持久化** — 扫码登录后 token 自动保存，重启免登录
 - **输入状态** — 支持"对方正在输入中"指示器
+- **Web 管理面板** — 可选的浏览器 UI，支持会话管理、扫码登录，可 Docker 部署
 - **MCP 服务器** — 可选的 [MCP](https://modelcontextprotocol.io/) 集成，让 AI agent 直接操作 bot（`pip install weilink[mcp]`）
 
 ## 安装

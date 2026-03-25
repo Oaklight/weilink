@@ -1,6 +1,6 @@
 .PHONY: all build-package push-package clean-package build-docker push-docker clean-docker test lint format typecheck clean help
 
-DOCKER_IMAGE := oaklight/weilink-admin
+DOCKER_IMAGE := oaklight/weilink
 VERSION := $(shell grep '__version__' src/weilink/__init__.py | head -1 | cut -d'"' -f2)
 
 # Optional variables

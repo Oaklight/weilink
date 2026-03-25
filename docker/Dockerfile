@@ -2,7 +2,7 @@
 
 ARG PYTHON_VERSION=3.12
 ARG REGISTRY_MIRROR
-FROM ${REGISTRY_MIRROR:-docker.io}/python:${PYTHON_VERSION}-slim AS base
+FROM ${REGISTRY_MIRROR:-docker.io}/python:${PYTHON_VERSION}-alpine AS base
 
 ARG PYPI_MIRROR
 ARG LOCAL_WHEEL
@@ -14,13 +14,9 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Create a non-privileged user.
+# Create a non-privileged user (alpine syntax).
 ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --uid "${UID}" \
-    appuser
+RUN adduser -D -u "${UID}" appuser
 
 # Copy local wheels if available
 RUN mkdir -p /tmp/dist/
@@ -29,29 +25,31 @@ RUN if [ -d "/tmp/build/dist" ] && [ "$(ls -A /tmp/build/dist 2>/dev/null)" ]; t
         cp /tmp/build/dist/*.whl /tmp/dist/ 2>/dev/null || true; \
     fi
 
-# Install weilink: local wheel > specific version > latest from PyPI
+# Install weilink[mcp]: local wheel > specific version > latest from PyPI
+# Then remove pip/setuptools to save ~10MB
 RUN if [ -n "$LOCAL_WHEEL" ] && [ -f "/tmp/dist/$LOCAL_WHEEL" ]; then \
         echo "Installing from local wheel: $LOCAL_WHEEL"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}"; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[mcp]"; \
         else \
-            pip install --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}"; \
+            pip install --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[mcp]"; \
         fi; \
     elif [ -n "$PACKAGE_VERSION" ]; then \
         echo "Installing weilink version: $PACKAGE_VERSION"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink==$PACKAGE_VERSION"; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[mcp]==$PACKAGE_VERSION"; \
         else \
-            pip install --no-cache-dir "weilink==$PACKAGE_VERSION"; \
+            pip install --no-cache-dir "weilink[mcp]==$PACKAGE_VERSION"; \
         fi; \
     else \
         echo "Installing latest weilink from PyPI"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir weilink; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[mcp]"; \
         else \
-            pip install --no-cache-dir weilink; \
+            pip install --no-cache-dir "weilink[mcp]"; \
         fi; \
     fi && \
+    pip uninstall -y pip setuptools 2>/dev/null || true && \
     rm -rf /tmp/dist/ /tmp/build/
 
 # Data directory for session tokens — mount a volume here to persist across restarts.
@@ -60,6 +58,6 @@ VOLUME /data/weilink
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8000 8080
 
-CMD ["weilink-admin", "--host", "0.0.0.0", "--port", "8080", "-d", "/data/weilink"]
+CMD ["weilink", "mcp", "-t", "sse", "--host", "0.0.0.0", "-p", "8000", "--admin-port", "8080", "-d", "/data/weilink"]
