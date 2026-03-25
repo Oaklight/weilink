@@ -19,7 +19,7 @@
 
 ## 消息投递
 
-- **批量延迟到达** — 已观察到偶发情况：`send()` 返回成功，但消息在用户端延迟数分钟后批量送达。这是微信 / iLink 服务端的行为，不是 SDK 的 bug。正在持续跟踪中（[#2](https://github.com/Oaklight/weilink/issues/2)）。
+- **批量延迟到达** — 已观察到偶发情况：`send()` 返回成功，但消息在用户端延迟数分钟后批量送达。这是微信 / iLink 服务端的行为，不是 SDK 的 bug。使用 `auto_recv=True` 在发送前刷新 context token 可能在一定程度上缓解此问题。正在持续跟踪中（[#2](https://github.com/Oaklight/weilink/issues/2)）。
 
 ## Context Token
 
