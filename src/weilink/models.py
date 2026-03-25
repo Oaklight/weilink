@@ -200,6 +200,7 @@ class Message:
     timestamp: int = 0
     message_id: int | None = None
     context_token: str = ""
+    bot_id: str | None = None
 
 
 @dataclass

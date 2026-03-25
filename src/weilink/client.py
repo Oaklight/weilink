@@ -6,6 +6,8 @@ import base64
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -26,13 +28,34 @@ from weilink.models import (
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TOKEN_PATH = Path.home() / ".weilink" / "token.json"
+_DEFAULT_BASE_PATH = Path.home() / ".weilink"
+_DEFAULT_SESSION = "default"
+
+
+@dataclass
+class _Session:
+    """Per-session state for a single bot registration."""
+
+    name: str
+    token_path: Path
+    bot_info: BotInfo | None = None
+    cursor: str = ""
+    context_tokens: dict[str, str] = field(default_factory=dict)
+    context_timestamps: dict[str, float] = field(default_factory=dict)
+    typing_tickets: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def contexts_path(self) -> Path:
+        """Path to the contexts persistence file (sibling to token.json)."""
+        return self.token_path.parent / "contexts.json"
 
 
 class WeiLink:
     """Lightweight WeChat iLink Bot client.
 
-    Provides register/send/recv message queue semantics over the iLink protocol.
+    Supports multiple named sessions for registering one bot with multiple
+    WeChat accounts.  When ``name`` is not provided, a default session is
+    used and behaviour is identical to single-session usage.
 
     Example::
 
@@ -50,136 +73,286 @@ class WeiLink:
         wl.close()
     """
 
-    def __init__(self, token_path: str | Path | None = None):
+    def __init__(
+        self,
+        token_path: str | Path | None = None,
+        *,
+        base_path: str | Path | None = None,
+    ):
         """Initialize the WeiLink client.
 
         Args:
-            token_path: Path to persist bot credentials.
-                Defaults to ~/.weilink/token.json.
+            token_path: Path to persist bot credentials for the default
+                session.  Defaults to ``~/.weilink/token.json``.
+            base_path: Base directory for multi-session storage.  Named
+                sessions are stored under ``<base_path>/<name>/``.
+                Defaults to ``~/.weilink/``.  Ignored if *token_path*
+                is given (the base path is derived from it).
         """
-        self._token_path = Path(token_path) if token_path else _DEFAULT_TOKEN_PATH
-        self._bot_info: BotInfo | None = None
-        self._cursor: str = ""
-        self._context_tokens: dict[str, str] = {}
-        self._context_timestamps: dict[str, float] = {}
-        self._typing_tickets: dict[str, str] = {}
-        self._load_state()
-        self._load_contexts()
+        if token_path is not None:
+            self._base_path = Path(token_path).parent
+        elif base_path is not None:
+            self._base_path = Path(base_path)
+        else:
+            self._base_path = _DEFAULT_BASE_PATH
 
-    def _load_state(self) -> None:
-        """Load persisted bot credentials and cursor."""
-        if not self._token_path.exists():
+        default_token = (
+            Path(token_path) if token_path else self._base_path / "token.json"
+        )
+
+        self._sessions: dict[str, _Session] = {}
+        self._default_session = self._create_session(_DEFAULT_SESSION, default_token)
+
+    # ------------------------------------------------------------------
+    # Session management
+    # ------------------------------------------------------------------
+
+    def _create_session(self, name: str, token_path: Path) -> _Session:
+        """Create a session, load its persisted state, and register it."""
+        session = _Session(name=name, token_path=token_path)
+        self._load_session_state(session)
+        self._load_session_contexts(session)
+        self._sessions[name] = session
+        return session
+
+    def _session_for_name(self, name: str | None) -> _Session:
+        """Resolve a session by name, falling back to default."""
+        key = name or _DEFAULT_SESSION
+        session = self._sessions.get(key)
+        if session is None:
+            raise ValueError(
+                f"No session named {key!r}. Call login(name={key!r}) first."
+            )
+        return session
+
+    def _find_session_for_user(self, user_id: str) -> _Session | None:
+        """Find the session with the most recent context_token for a user."""
+        best: _Session | None = None
+        best_ts = 0.0
+        for s in self._sessions.values():
+            if user_id in s.context_tokens:
+                ts = s.context_timestamps.get(user_id, 0.0)
+                if ts > best_ts:
+                    best = s
+                    best_ts = ts
+        return best
+
+    # ------------------------------------------------------------------
+    # Persistence helpers (per-session)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_session_state(session: _Session) -> None:
+        """Load persisted bot credentials and cursor for a session."""
+        if not session.token_path.exists():
             return
         try:
-            data = json.loads(self._token_path.read_text())
-            self._bot_info = BotInfo(
+            data = json.loads(session.token_path.read_text())
+            session.bot_info = BotInfo(
                 bot_id=data["bot_id"],
                 base_url=data["base_url"],
                 token=data["token"],
             )
-            self._cursor = data.get("cursor", "")
-            logger.info("Loaded credentials for %s", self._bot_info.bot_id)
+            session.cursor = data.get("cursor", "")
+            logger.info(
+                "Loaded credentials for %s (session=%s)",
+                session.bot_info.bot_id,
+                session.name,
+            )
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to load state from %s: %s", self._token_path, e)
+            logger.warning("Failed to load state from %s: %s", session.token_path, e)
 
-    def _save_state(self) -> None:
-        """Persist bot credentials and cursor to disk."""
-        if not self._bot_info:
+    @staticmethod
+    def _save_session_state(session: _Session) -> None:
+        """Persist bot credentials and cursor for a session."""
+        if not session.bot_info:
             return
-        self._token_path.parent.mkdir(parents=True, exist_ok=True)
+        session.token_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            "bot_id": self._bot_info.bot_id,
-            "base_url": self._bot_info.base_url,
-            "token": self._bot_info.token,
-            "cursor": self._cursor,
+            "bot_id": session.bot_info.bot_id,
+            "base_url": session.bot_info.base_url,
+            "token": session.bot_info.token,
+            "cursor": session.cursor,
         }
-        self._token_path.write_text(json.dumps(data, indent=2))
+        session.token_path.write_text(json.dumps(data, indent=2))
 
-    @property
-    def _contexts_path(self) -> Path:
-        """Path to the contexts persistence file (sibling to token.json)."""
-        return self._token_path.parent / "contexts.json"
-
-    def _load_contexts(self) -> None:
-        """Load persisted context tokens, discarding entries older than 24h.
-
-        [Experimental] Context tokens are stored separately from bot
-        credentials in ``contexts.json`` with per-entry timestamps so that
-        stale entries can be auto-expired on load.
-        """
-        if not self._contexts_path.exists():
+    @staticmethod
+    def _load_session_contexts(session: _Session) -> None:
+        """Load persisted context tokens for a session."""
+        if not session.contexts_path.exists():
             return
         try:
-            data = json.loads(self._contexts_path.read_text())
+            data = json.loads(session.contexts_path.read_text())
         except (json.JSONDecodeError, OSError) as e:
             logger.warning(
-                "Failed to load contexts from %s: %s", self._contexts_path, e
+                "Failed to load contexts from %s: %s", session.contexts_path, e
             )
             return
 
         now = time.time()
-        expiry = 24 * 3600  # 24 hours in seconds
+        expiry = 24 * 3600
         for user_id, entry in data.items():
             if not isinstance(entry, dict):
                 continue
             token = entry.get("t", "")
             ts = entry.get("ts", 0.0)
             if token and (now - ts) < expiry:
-                self._context_tokens[user_id] = token
-                self._context_timestamps[user_id] = ts
+                session.context_tokens[user_id] = token
+                session.context_timestamps[user_id] = ts
 
         logger.debug(
             "Loaded %d context token(s) from %s",
-            len(self._context_tokens),
-            self._contexts_path,
+            len(session.context_tokens),
+            session.contexts_path,
         )
 
-    def _save_contexts(self) -> None:
-        """Persist current context tokens to disk.
-
-        [Experimental] Writes only when called explicitly (on context_token
-        change), not on every ``_save_state()`` call.
-        """
-        self._contexts_path.parent.mkdir(parents=True, exist_ok=True)
+    @staticmethod
+    def _save_session_contexts(session: _Session) -> None:
+        """Persist context tokens for a session."""
+        session.token_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
-            user_id: {"t": token, "ts": self._context_timestamps.get(user_id, 0.0)}
-            for user_id, token in self._context_tokens.items()
+            user_id: {"t": token, "ts": session.context_timestamps.get(user_id, 0.0)}
+            for user_id, token in session.context_tokens.items()
         }
-        self._contexts_path.write_text(json.dumps(data, indent=2))
+        session.contexts_path.write_text(json.dumps(data, indent=2))
+
+    # ------------------------------------------------------------------
+    # Backward-compatible delegation
+    # ------------------------------------------------------------------
+
+    def _load_state(self) -> None:
+        """Load state for the default session (backward compat)."""
+        self._load_session_state(self._default_session)
+
+    def _save_state(self) -> None:
+        """Save state for the default session (backward compat)."""
+        self._save_session_state(self._default_session)
+
+    def _load_contexts(self) -> None:
+        """Load contexts for the default session (backward compat)."""
+        self._load_session_contexts(self._default_session)
+
+    def _save_contexts(self) -> None:
+        """Save contexts for the default session (backward compat)."""
+        self._save_session_contexts(self._default_session)
+
+    # Backward-compatible attribute access for tests that poke internals
+    @property
+    def _bot_info(self) -> BotInfo | None:
+        return self._default_session.bot_info
+
+    @_bot_info.setter
+    def _bot_info(self, value: BotInfo | None) -> None:
+        self._default_session.bot_info = value
+
+    @property
+    def _cursor(self) -> str:
+        return self._default_session.cursor
+
+    @_cursor.setter
+    def _cursor(self, value: str) -> None:
+        self._default_session.cursor = value
+
+    @property
+    def _context_tokens(self) -> dict[str, str]:
+        return self._default_session.context_tokens
+
+    @_context_tokens.setter
+    def _context_tokens(self, value: dict[str, str]) -> None:
+        self._default_session.context_tokens = value
+
+    @property
+    def _context_timestamps(self) -> dict[str, float]:
+        return self._default_session.context_timestamps
+
+    @_context_timestamps.setter
+    def _context_timestamps(self, value: dict[str, float]) -> None:
+        self._default_session.context_timestamps = value
+
+    @property
+    def _typing_tickets(self) -> dict[str, str]:
+        return self._default_session.typing_tickets
+
+    @_typing_tickets.setter
+    def _typing_tickets(self, value: dict[str, str]) -> None:
+        self._default_session.typing_tickets = value
+
+    @property
+    def _token_path(self) -> Path:
+        return self._default_session.token_path
+
+    @property
+    def _contexts_path(self) -> Path:
+        return self._default_session.contexts_path
+
+    # ------------------------------------------------------------------
+    # Public properties
+    # ------------------------------------------------------------------
 
     @property
     def is_connected(self) -> bool:
-        """Whether the client has valid credentials."""
-        return self._bot_info is not None
+        """Whether any session has valid credentials."""
+        return any(s.bot_info is not None for s in self._sessions.values())
 
     @property
     def bot_id(self) -> str | None:
-        """Current bot identifier, or None if not logged in."""
-        return self._bot_info.bot_id if self._bot_info else None
+        """Default session's bot identifier, or None if not logged in."""
+        bi = self._default_session.bot_info
+        return bi.bot_id if bi else None
 
-    def login(self, force: bool = False) -> BotInfo:
+    @property
+    def bot_ids(self) -> dict[str, str]:
+        """Map of session name to bot_id for all connected sessions."""
+        return {
+            name: s.bot_info.bot_id for name, s in self._sessions.items() if s.bot_info
+        }
+
+    @property
+    def sessions(self) -> list[str]:
+        """List of all session names."""
+        return list(self._sessions.keys())
+
+    # ------------------------------------------------------------------
+    # Login
+    # ------------------------------------------------------------------
+
+    def login(self, name: str | None = None, force: bool = False) -> BotInfo:
         """Login via QR code scan.
 
         If valid credentials exist on disk and force is False, reuses them.
 
         Args:
+            name: Session name. ``None`` uses the default session.
+                A new named session stores credentials at
+                ``<base_path>/<name>/token.json``.
             force: Force a new QR code login even if credentials exist.
 
         Returns:
             BotInfo with bot_id, base_url, and token.
         """
-        if self._bot_info and not force:
+        if name is None:
+            session = self._default_session
+        elif name in self._sessions:
+            session = self._sessions[name]
+        else:
+            token_path = self._base_path / name / "token.json"
+            session = self._create_session(name, token_path)
+
+        if session.bot_info and not force:
             logger.info(
-                "Already logged in as %s (use force=True to re-login)",
-                self._bot_info.bot_id,
+                "Already logged in as %s (session=%s, use force=True to re-login)",
+                session.bot_info.bot_id,
+                session.name,
             )
-            return self._bot_info
+            return session.bot_info
 
         # Step 1: Get QR code
         qr_resp = proto.get_qr_code()
         qrcode = qr_resp["qrcode"]
         qr_url = qr_resp.get("qrcode_img_content", "")
 
+        if name:
+            print(f"[Session: {name}]")
         self._display_qr(qr_url)
 
         # Step 2: Poll for scan confirmation (5 min deadline)
@@ -189,7 +362,6 @@ class WeiLink:
             try:
                 status_resp = proto.poll_qr_status(qrcode)
             except (proto.ILinkError, TimeoutError, OSError):
-                # Long-poll timeout is normal, retry
                 print(".", end="", flush=True)
                 continue
 
@@ -200,15 +372,15 @@ class WeiLink:
                 base_url = status_resp.get("baseurl", proto.BASE_URL)
                 bot_id = status_resp.get("ilink_bot_id", "")
 
-                self._bot_info = BotInfo(
+                session.bot_info = BotInfo(
                     bot_id=bot_id,
                     base_url=base_url,
                     token=bot_token,
                 )
-                self._cursor = ""
-                self._save_state()
+                session.cursor = ""
+                self._save_session_state(session)
                 print(f"\nLogin successful! Bot ID: {bot_id}")
-                return self._bot_info
+                return session.bot_info
 
             if status == "scaned":
                 print("\nScanned, confirm on your phone...", end="", flush=True)
@@ -223,16 +395,20 @@ class WeiLink:
                 print("Waiting for scan...", end="", flush=True)
                 continue
 
-            # status == "wait" or unknown
             print(".", end="", flush=True)
 
         raise proto.ILinkError(ret=-1, errmsg="QR code login timed out (5 min)")
 
+    # ------------------------------------------------------------------
+    # Receive
+    # ------------------------------------------------------------------
+
     def recv(self, timeout: float = 35.0) -> list[Message]:
         """Receive pending messages via long-polling.
 
-        Blocks for up to `timeout` seconds waiting for new messages.
-        Automatically manages the sync cursor.
+        When multiple sessions are active, polls all sessions concurrently
+        and merges results.  Each returned ``Message`` has ``bot_id``
+        populated so the caller knows which session received it.
 
         Args:
             timeout: Maximum wait time in seconds.
@@ -244,42 +420,62 @@ class WeiLink:
             RuntimeError: If not logged in.
             SessionExpiredError: If session has expired (re-login needed).
         """
-        self._ensure_connected()
-        assert self._bot_info is not None
+        active = [s for s in self._sessions.values() if s.bot_info]
+        if not active:
+            raise RuntimeError("Not logged in. Call login() first.")
+
+        if len(active) == 1:
+            return self._recv_session(active[0], timeout)
+
+        # Parallel poll for multiple sessions
+        messages: list[Message] = []
+        with ThreadPoolExecutor(max_workers=len(active)) as pool:
+            futures = {pool.submit(self._recv_session, s, timeout): s for s in active}
+            for f in as_completed(futures):
+                try:
+                    messages.extend(f.result())
+                except Exception as e:
+                    session = futures[f]
+                    logger.error("recv error for session %s: %s", session.name, e)
+        return messages
+
+    def _recv_session(self, session: _Session, timeout: float) -> list[Message]:
+        """Long-poll a single session for messages."""
+        assert session.bot_info is not None
 
         resp = proto.get_updates(
-            cursor=self._cursor,
-            token=self._bot_info.token,
-            base_url=self._bot_info.base_url,
+            cursor=session.cursor,
+            token=session.bot_info.token,
+            base_url=session.bot_info.base_url,
         )
 
-        # Update cursor
         new_cursor = resp.get("get_updates_buf", "")
         if new_cursor:
-            self._cursor = new_cursor
-            self._save_state()
+            session.cursor = new_cursor
+            self._save_session_state(session)
 
-        # Parse messages
         context_changed = False
         messages: list[Message] = []
         for raw_msg in resp.get("msgs", []):
-            # Only process user messages (message_type=1)
             if raw_msg.get("message_type") != 1:
                 continue
 
-            msg = self._parse_message(raw_msg)
+            msg = self._parse_message(raw_msg, bot_id=session.bot_info.bot_id)
             if msg:
-                # Cache context_token for this user
                 if msg.context_token:
-                    self._context_tokens[msg.from_user] = msg.context_token
-                    self._context_timestamps[msg.from_user] = time.time()
+                    session.context_tokens[msg.from_user] = msg.context_token
+                    session.context_timestamps[msg.from_user] = time.time()
                     context_changed = True
                 messages.append(msg)
 
         if context_changed:
-            self._save_contexts()
+            self._save_session_contexts(session)
 
         return messages
+
+    # ------------------------------------------------------------------
+    # Send
+    # ------------------------------------------------------------------
 
     _UPLOAD_TO_SEND: dict[UploadMediaType, SendMediaType] = {
         UploadMediaType.IMAGE: SendMediaType.IMAGE,
@@ -308,15 +504,9 @@ class WeiLink:
     ) -> bool:
         """Send a message to a user.
 
-        Supports text and media (image, voice, file, video). Each media
-        parameter accepts raw ``bytes``, an ``UploadedMedia`` reference
-        from ``upload()``, or a list of either for batch sending.
-        When multiple fields are provided, each is sent as a separate
-        message in order: text -> image(s) -> voice(s) -> file(s) -> video(s).
-
-        Uses the cached context_token from the most recent message received
-        from this user. Returns False if no context_token is available or
-        any individual send fails.
+        Automatically routes to the session that has a context_token for
+        the target user.  If multiple sessions have a token, the one with
+        the most recent timestamp is used.
 
         Args:
             to: Target user ID (xxx@im.wechat).
@@ -325,8 +515,7 @@ class WeiLink:
             voice: Voice bytes/UploadedMedia, or list thereof.
             file: File bytes/UploadedMedia, or list thereof.
             file_name: File name(s). Required when sending file(s)
-                as raw bytes. Ignored for UploadedMedia (uses the
-                name stored in the reference).
+                as raw bytes. Ignored for UploadedMedia.
             video: Video bytes/UploadedMedia, or list thereof.
 
         Returns:
@@ -338,7 +527,6 @@ class WeiLink:
                 or if file and file_name list lengths don't match.
         """
 
-        # Normalize single items to lists
         def _to_list(
             v: bytes | UploadedMedia | list[bytes | UploadedMedia] | None,
         ) -> list[bytes | UploadedMedia]:
@@ -354,6 +542,7 @@ class WeiLink:
         files = _to_list(file)
 
         # Resolve file names for raw bytes files
+        fnames: list[str] = []
         if files:
             raw_files = [f for f in files if isinstance(f, bytes)]
             if raw_files:
@@ -371,10 +560,17 @@ class WeiLink:
                 if any(not fn for fn in fnames):
                     raise ValueError("file_name is required when sending a file")
 
-        self._ensure_connected()
-        assert self._bot_info is not None
+        # Find the right session
+        session = self._find_session_for_user(to)
+        if session is None or session.bot_info is None:
+            # Check if any session is connected
+            active = [s for s in self._sessions.values() if s.bot_info]
+            if not active:
+                raise RuntimeError("Not logged in. Call login() first.")
+            logger.warning("No context_token for user %s, cannot send", to)
+            return False
 
-        ctx_token = self._context_tokens.get(to)
+        ctx_token = session.context_tokens.get(to)
         if not ctx_token:
             logger.warning("No context_token for user %s, cannot send", to)
             return False
@@ -388,8 +584,8 @@ class WeiLink:
                     to_user=to,
                     text=text,
                     context_token=ctx_token,
-                    token=self._bot_info.token,
-                    base_url=self._bot_info.base_url,
+                    token=session.bot_info.token,
+                    base_url=session.bot_info.base_url,
                 )
                 ret = resp.get("ret", 0)
                 if ret != 0:
@@ -404,14 +600,13 @@ class WeiLink:
                 logger.error("Failed to send text to %s: %s", to, e)
                 all_ok = False
 
-        # Build ordered send queue: images -> voices -> files -> videos
+        # Build ordered send queue
         send_queue: list[tuple[bytes | UploadedMedia, UploadMediaType, str, str]] = []
         for item in images:
             send_queue.append((item, UploadMediaType.IMAGE, "image_item", ""))
         for item in voices:
             send_queue.append((item, UploadMediaType.VOICE, "voice_item", ""))
 
-        # For files, pair raw bytes with file_name; UploadedMedia carries its own
         fname_iter = (
             iter(fnames)
             if files and any(isinstance(f, bytes) for f in files)
@@ -432,9 +627,11 @@ class WeiLink:
 
         for item, media_type, item_key, fname in send_queue:
             if isinstance(item, UploadedMedia):
-                ok = self._send_uploaded(to, item)
+                ok = self._send_uploaded(to, item, session=session)
             else:
-                ok = self._send_media(to, item, media_type, item_key, file_name=fname)
+                ok = self._send_media(
+                    to, item, media_type, item_key, file_name=fname, session=session
+                )
             if not ok:
                 all_ok = False
 
@@ -443,6 +640,10 @@ class WeiLink:
             return False
 
         return all_ok
+
+    # ------------------------------------------------------------------
+    # Typing
+    # ------------------------------------------------------------------
 
     def send_typing(self, to: str) -> None:
         """Show "typing" indicator to a user.
@@ -460,11 +661,12 @@ class WeiLink:
         """
         self._set_typing(to, status=2)
 
+    # ------------------------------------------------------------------
+    # Download / Upload
+    # ------------------------------------------------------------------
+
     def download(self, msg: Message) -> bytes:
         """Download media from a received message.
-
-        Supports IMAGE, VOICE, FILE, and VIDEO message types.
-        Requires ``weilink[media]`` (pycryptodome).
 
         Args:
             msg: A received Message with media content.
@@ -532,20 +734,26 @@ class WeiLink:
 
         from weilink._cdn import upload_media
 
-        self._ensure_connected()
-        assert self._bot_info is not None
+        # Find session for this user, or use any connected session
+        session = self._find_session_for_user(to)
+        if session is None or session.bot_info is None:
+            active = [s for s in self._sessions.values() if s.bot_info]
+            if not active:
+                raise RuntimeError("Not logged in. Call login() first.")
+            session = active[0]
+
+        assert session.bot_info is not None
 
         def _get_url(**kwargs: Any) -> dict[str, Any]:
-            assert self._bot_info is not None
+            assert session.bot_info is not None
             return proto.get_upload_url(
                 **kwargs,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
             )
 
         uploaded = upload_media(data, upload_type.value, to, _get_url)
         if file_name:
-            # Attach file_name to the frozen dataclass by creating a new instance
             uploaded = UploadedMedia(
                 media_type=uploaded.media_type,
                 filekey=uploaded.filekey,
@@ -557,15 +765,24 @@ class WeiLink:
             )
         return uploaded
 
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
     def close(self) -> None:
-        """Save state and clean up."""
-        self._save_state()
+        """Save state for all sessions and clean up."""
+        for session in self._sessions.values():
+            self._save_session_state(session)
 
     def __enter__(self) -> WeiLink:
         return self
 
     def __exit__(self, *args: Any) -> None:
         self.close()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _display_qr(url: str) -> None:
@@ -581,17 +798,18 @@ class WeiLink:
         print_qr_terminal(url)
 
     def _ensure_connected(self) -> None:
-        """Raise if not logged in."""
-        if not self._bot_info:
+        """Raise if no session is logged in."""
+        if not any(s.bot_info for s in self._sessions.values()):
             raise RuntimeError("Not logged in. Call login() first.")
 
-    def _parse_message(self, raw: dict[str, Any]) -> Message | None:
+    def _parse_message(
+        self, raw: dict[str, Any], bot_id: str | None = None
+    ) -> Message | None:
         """Parse a raw iLink message dict into a Message."""
         from_user = raw.get("from_user_id", "")
         if not from_user:
             return None
 
-        # Extract content from item_list
         text: str | None = None
         image: ImageInfo | None = None
         voice: VoiceInfo | None = None
@@ -631,6 +849,7 @@ class WeiLink:
             timestamp=raw.get("create_time_ms", 0),
             message_id=raw.get("message_id"),
             context_token=raw.get("context_token", ""),
+            bot_id=bot_id,
         )
 
     @staticmethod
@@ -651,7 +870,6 @@ class WeiLink:
         matching the official TypeScript SDK behaviour.
         """
         media = cls._parse_media_info(raw.get("media", {}))
-        # Prefer image_item.aeskey (raw hex) over media.aes_key (base64)
         raw_aeskey_hex = raw.get("aeskey", "")
         if raw_aeskey_hex:
             media = MediaInfo(
@@ -712,20 +930,29 @@ class WeiLink:
             return msg.video.media
         return None
 
-    def _send_uploaded(self, to: str, uploaded: UploadedMedia) -> bool:
+    def _send_uploaded(
+        self,
+        to: str,
+        uploaded: UploadedMedia,
+        session: _Session | None = None,
+    ) -> bool:
         """Send a pre-uploaded media reference without re-uploading.
 
         Args:
             to: Target user ID.
-            uploaded: UploadedMedia from upload() or _send_media().
+            uploaded: UploadedMedia from upload().
+            session: Session to use. Auto-detected if None.
 
         Returns:
             True if sent successfully.
         """
-        self._ensure_connected()
-        assert self._bot_info is not None
+        if session is None:
+            session = self._find_session_for_user(to)
+        if session is None or session.bot_info is None:
+            logger.warning("No session/context_token for user %s, cannot send", to)
+            return False
 
-        ctx_token = self._context_tokens.get(to)
+        ctx_token = session.context_tokens.get(to)
         if not ctx_token:
             logger.warning("No context_token for user %s, cannot send", to)
             return False
@@ -756,8 +983,8 @@ class WeiLink:
                 to_user=to,
                 item_list=item_list,
                 context_token=ctx_token,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
             )
             ret = resp.get("ret", 0)
             if ret != 0:
@@ -780,6 +1007,7 @@ class WeiLink:
         media_type: UploadMediaType,
         item_key: str,
         file_name: str | None = None,
+        session: _Session | None = None,
     ) -> bool:
         """Upload and send a media message.
 
@@ -789,33 +1017,35 @@ class WeiLink:
             media_type: Upload media type enum value.
             item_key: Item key in message body (e.g. "image_item").
             file_name: Original file name (for file_item only).
+            session: Session to use. Auto-detected if None.
 
         Returns:
             True if sent successfully.
         """
         from weilink._cdn import upload_media
 
-        self._ensure_connected()
-        assert self._bot_info is not None
+        if session is None:
+            session = self._find_session_for_user(to)
+        if session is None or session.bot_info is None:
+            logger.warning("No session/context_token for user %s, cannot send", to)
+            return False
 
-        ctx_token = self._context_tokens.get(to)
+        ctx_token = session.context_tokens.get(to)
         if not ctx_token:
             logger.warning("No context_token for user %s, cannot send", to)
             return False
 
         def _get_url(**kwargs: Any) -> dict[str, Any]:
-            assert self._bot_info is not None
+            assert session.bot_info is not None
             return proto.get_upload_url(
                 **kwargs,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
             )
 
         try:
             uploaded = upload_media(file_data, media_type.value, to, _get_url)
 
-            # Build the media item
-            # aes_key in protocol is base64(hex_string_as_ascii)
             aes_key_b64 = base64.b64encode(uploaded.aes_key_hex.encode()).decode()
             media_dict: dict[str, Any] = {
                 "media": {
@@ -845,8 +1075,8 @@ class WeiLink:
                 to_user=to,
                 item_list=item_list,
                 context_token=ctx_token,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
             )
             ret = resp.get("ret", 0)
             if ret != 0:
@@ -864,23 +1094,27 @@ class WeiLink:
 
     def _set_typing(self, to: str, status: int) -> None:
         """Set or cancel typing indicator."""
-        self._ensure_connected()
-        assert self._bot_info is not None
+        session = self._find_session_for_user(to)
+        if session is None or session.bot_info is None:
+            self._ensure_connected()
+            # Fall back to default session
+            session = self._default_session
+            if session.bot_info is None:
+                return
 
-        # Get typing ticket (cached per user)
-        ticket = self._typing_tickets.get(to)
+        ticket = session.typing_tickets.get(to)
         if not ticket:
-            ctx_token = self._context_tokens.get(to)
+            ctx_token = session.context_tokens.get(to)
             try:
                 config = proto.get_config(
                     user_id=to,
-                    token=self._bot_info.token,
+                    token=session.bot_info.token,
                     context_token=ctx_token,
-                    base_url=self._bot_info.base_url,
+                    base_url=session.bot_info.base_url,
                 )
                 ticket = config.get("typing_ticket", "")
                 if ticket:
-                    self._typing_tickets[to] = ticket
+                    session.typing_tickets[to] = ticket
             except proto.ILinkError as e:
                 logger.warning("Failed to get typing ticket for %s: %s", to, e)
                 return
@@ -893,8 +1127,8 @@ class WeiLink:
                 user_id=to,
                 typing_ticket=ticket,
                 status=status,
-                token=self._bot_info.token,
-                base_url=self._bot_info.base_url,
+                token=session.bot_info.token,
+                base_url=session.bot_info.base_url,
             )
         except proto.ILinkError as e:
             logger.warning("Failed to set typing for %s: %s", to, e)

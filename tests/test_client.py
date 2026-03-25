@@ -454,3 +454,201 @@ class TestUploadAndReuse:
             wl = self._make_client(tmpdir)
             result = wl.send("user@im.wechat")
             assert result is False
+
+
+class TestMultiSession:
+    """Tests for multi-session support."""
+
+    def test_default_session_backward_compat(self):
+        """Single-session usage is unchanged."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            token_path.write_text(
+                json.dumps(
+                    {
+                        "bot_id": "bot1@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok1",
+                    }
+                )
+            )
+            wl = WeiLink(token_path=token_path)
+            assert wl.is_connected
+            assert wl.bot_id == "bot1@im.bot"
+            assert wl.sessions == ["default"]
+            assert wl.bot_ids == {"default": "bot1@im.bot"}
+
+    def test_bot_ids_empty_when_not_connected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            assert wl.bot_ids == {}
+            assert wl.sessions == ["default"]
+
+    def test_find_session_for_user(self):
+        """Auto-routing picks the session with the most recent context token."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+
+            # Set up two sessions manually
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+            wl._default_session.context_tokens["user@im.wechat"] = "ctx_old"
+            wl._default_session.context_timestamps["user@im.wechat"] = time.time() - 100
+
+            from weilink.client import _Session
+
+            session2 = _Session(
+                name="second",
+                token_path=Path(tmpdir) / "second" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot2@im.bot",
+                    base_url="https://example.com",
+                    token="tok2",
+                ),
+            )
+            session2.context_tokens["user@im.wechat"] = "ctx_new"
+            session2.context_timestamps["user@im.wechat"] = time.time()
+            wl._sessions["second"] = session2
+
+            # Should pick session2 (more recent timestamp)
+            found = wl._find_session_for_user("user@im.wechat")
+            assert found is not None
+            assert found.name == "second"
+
+            # Unknown user returns None
+            assert wl._find_session_for_user("nobody@im.wechat") is None
+
+    def test_is_connected_any_session(self):
+        """is_connected returns True if any session has credentials."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            assert not wl.is_connected
+
+            from weilink.client import _Session
+
+            session2 = _Session(
+                name="second",
+                token_path=Path(tmpdir) / "second" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot2@im.bot",
+                    base_url="https://example.com",
+                    token="tok2",
+                ),
+            )
+            wl._sessions["second"] = session2
+            assert wl.is_connected
+            # bot_id still returns default (None)
+            assert wl.bot_id is None
+            assert wl.bot_ids == {"second": "bot2@im.bot"}
+
+    def test_named_session_file_isolation(self):
+        """Named sessions store files in separate subdirectories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+
+            session = wl._create_session("foo", Path(tmpdir) / "foo" / "token.json")
+            session.bot_info = BotInfo(
+                bot_id="bot_foo@im.bot",
+                base_url="https://example.com",
+                token="tok_foo",
+            )
+            session.context_tokens["user@im.wechat"] = "ctx_foo"
+            session.context_timestamps["user@im.wechat"] = time.time()
+
+            wl._save_session_state(session)
+            wl._save_session_contexts(session)
+
+            # Verify files are in the right place
+            assert (Path(tmpdir) / "foo" / "token.json").exists()
+            assert (Path(tmpdir) / "foo" / "contexts.json").exists()
+
+            # Default session files should not exist (no bot_info)
+            assert not (Path(tmpdir) / "token.json").exists()
+
+    def test_message_has_bot_id(self):
+        """Parsed messages include bot_id when provided."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "message_type": 1,
+                "context_token": "ctx_abc",
+                "item_list": [{"type": 1, "text_item": {"text": "hi"}}],
+            }
+            msg = wl._parse_message(raw, bot_id="bot1@im.bot")
+            assert msg is not None
+            assert msg.bot_id == "bot1@im.bot"
+
+            # Without bot_id, defaults to None
+            msg2 = wl._parse_message(raw)
+            assert msg2 is not None
+            assert msg2.bot_id is None
+
+    def test_close_saves_all_sessions(self):
+        """close() saves state for all sessions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="s2",
+                token_path=Path(tmpdir) / "s2" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot2@im.bot",
+                    base_url="https://example.com",
+                    token="tok2",
+                ),
+            )
+            wl._sessions["s2"] = s2
+
+            wl.close()
+
+            assert (Path(tmpdir) / "token.json").exists()
+            assert (Path(tmpdir) / "s2" / "token.json").exists()
+
+    def test_base_path_constructor(self):
+        """base_path kwarg sets the base directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            assert wl._default_session.token_path == Path(tmpdir) / "token.json"
+
+    def test_send_auto_routes_to_correct_session(self):
+        """send() should pick the session that has a context_token for the user."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+
+            # Default session has no context for the user
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="s2",
+                token_path=Path(tmpdir) / "s2" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot2@im.bot",
+                    base_url="https://example.com",
+                    token="tok2",
+                ),
+            )
+            s2.context_tokens["user_s2@im.wechat"] = "ctx_s2"
+            s2.context_timestamps["user_s2@im.wechat"] = time.time()
+            wl._sessions["s2"] = s2
+
+            # Sending to user_s2 without context in default → should return False
+            # because no session has context for "unknown@im.wechat"
+            result = wl.send("unknown@im.wechat", "hello")
+            assert result is False
