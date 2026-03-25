@@ -86,6 +86,7 @@ nav:
       - 多会话: usage/multi_session.md
       - MCP 服务器: usage/mcp.md
       - OpenAPI 服务器: usage/openapi.md
+      - 管理面板: usage/admin.md
       - CLI 参考: usage/cli.md
       - Docker 部署: usage/docker.md
       - 注意事项: usage/gotchas.md
