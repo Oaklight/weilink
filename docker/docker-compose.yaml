@@ -1,0 +1,11 @@
+services:
+  weilink-admin:
+    image: oaklight/weilink-admin
+    ports:
+      - "8080:8080"
+    volumes:
+      - weilink-data:/data/weilink
+    restart: unless-stopped
+
+volumes:
+  weilink-data:
