@@ -2,16 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-try:
-    from Crypto.Cipher import AES as _AES  # noqa: F401
-
-    HAS_CRYPTO = True
-except ImportError:
-    HAS_CRYPTO = False
-
-needs_crypto = pytest.mark.skipif(not HAS_CRYPTO, reason="pycryptodome not installed")
+import os
 
 
 class TestDecodeAesKey:
@@ -36,79 +27,49 @@ class TestDecodeAesKey:
         assert result == raw
 
 
-class TestPkcs7:
-    """Tests for PKCS7 padding/unpadding."""
-
-    def test_pad_unpad_roundtrip(self) -> None:
-        from weilink._cdn import _pkcs7_pad, _pkcs7_unpad
-
-        data = b"hello world"
-        padded = _pkcs7_pad(data)
-        assert len(padded) % 16 == 0
-        assert _pkcs7_unpad(padded) == data
-
-    def test_pad_exact_block(self) -> None:
-        from weilink._cdn import _pkcs7_pad, _pkcs7_unpad
-
-        data = b"x" * 16
-        padded = _pkcs7_pad(data)
-        # Full block of padding added
-        assert len(padded) == 32
-        assert _pkcs7_unpad(padded) == data
-
-    def test_unpad_empty(self) -> None:
-        from weilink._cdn import _pkcs7_unpad
-
-        assert _pkcs7_unpad(b"") == b""
-
-
 class TestPaddedSize:
     """Tests for aes_ecb_padded_size."""
 
     def test_not_aligned(self) -> None:
-        from weilink._cdn import aes_ecb_padded_size
+        from weilink._crypto import aes_ecb_padded_size
 
         assert aes_ecb_padded_size(10) == 16
 
     def test_exact_block(self) -> None:
-        from weilink._cdn import aes_ecb_padded_size
+        from weilink._crypto import aes_ecb_padded_size
 
         # Exact block size gets a full padding block
         assert aes_ecb_padded_size(16) == 32
 
     def test_zero(self) -> None:
-        from weilink._cdn import aes_ecb_padded_size
+        from weilink._crypto import aes_ecb_padded_size
 
         assert aes_ecb_padded_size(0) == 16
 
 
-@needs_crypto
 class TestAesEncryptDecrypt:
-    """Tests for AES-128-ECB encrypt/decrypt."""
+    """Tests for AES-128-ECB encrypt/decrypt via the _crypto facade."""
 
     def test_roundtrip(self) -> None:
-        from weilink._cdn import aes_ecb_decrypt, aes_ecb_encrypt
+        from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt
 
         key = b"\x42" * 16
         data = b"secret message for testing AES"
-        encrypted = aes_ecb_encrypt(data, key)
+        encrypted = aes128_ecb_encrypt(data, key)
         assert encrypted != data
-        decrypted = aes_ecb_decrypt(encrypted, key)
+        decrypted = aes128_ecb_decrypt(encrypted, key)
         assert decrypted == data
 
     def test_large_data(self) -> None:
-        import os
-
-        from weilink._cdn import aes_ecb_decrypt, aes_ecb_encrypt
+        from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt
 
         key = os.urandom(16)
         data = os.urandom(1024)
-        encrypted = aes_ecb_encrypt(data, key)
-        decrypted = aes_ecb_decrypt(encrypted, key)
+        encrypted = aes128_ecb_encrypt(data, key)
+        decrypted = aes128_ecb_decrypt(encrypted, key)
         assert decrypted == data
 
 
-@needs_crypto
 class TestUploadedMedia:
     """Tests for UploadedMedia dataclass."""
 

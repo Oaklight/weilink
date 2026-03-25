@@ -1,7 +1,6 @@
-"""Head-to-head comparison: vendored _aes.py vs pycryptodome.
+"""Head-to-head comparison: pure-Python AES vs OpenSSL ctypes backend.
 
-This test ensures our pure-Python AES-128-ECB implementation produces
-bit-identical results to pycryptodome across various inputs.
+Ensures both backends produce bit-identical results across various inputs.
 """
 
 from __future__ import annotations
@@ -10,89 +9,96 @@ import os
 
 import pytest
 
-from Crypto.Cipher import AES as PyCryptoAES
+from weilink._aes import aes128_ecb_decrypt as py_decrypt
+from weilink._aes import aes128_ecb_encrypt as py_encrypt
 
-from weilink._aes import aes128_ecb_decrypt, aes128_ecb_encrypt
+try:
+    from weilink._aes_openssl import aes128_ecb_decrypt as ossl_decrypt
+    from weilink._aes_openssl import aes128_ecb_encrypt as ossl_encrypt
 
+    HAS_OPENSSL = True
+except (ImportError, OSError):
+    HAS_OPENSSL = False
 
-def _pycrypto_encrypt(data: bytes, key: bytes) -> bytes:
-    """Encrypt with pycryptodome AES-128-ECB + PKCS7."""
-    pad_len = 16 - (len(data) % 16)
-    padded = data + bytes([pad_len] * pad_len)
-    cipher = PyCryptoAES.new(key, PyCryptoAES.MODE_ECB)
-    return cipher.encrypt(padded)
-
-
-def _pycrypto_decrypt(data: bytes, key: bytes) -> bytes:
-    """Decrypt with pycryptodome AES-128-ECB + PKCS7 unpad."""
-    cipher = PyCryptoAES.new(key, PyCryptoAES.MODE_ECB)
-    plaintext = cipher.decrypt(data)
-    pad_len = plaintext[-1]
-    if 1 <= pad_len <= 16 and plaintext[-pad_len:] == bytes([pad_len] * pad_len):
-        plaintext = plaintext[:-pad_len]
-    return plaintext
+needs_openssl = pytest.mark.skipif(not HAS_OPENSSL, reason="libcrypto not available")
 
 
-class TestAesH2H:
-    """Head-to-head: _aes.py vs pycryptodome."""
+class TestKnownVectors:
+    """NIST / deterministic tests — always run (pure Python)."""
+
+    def test_nist_aes128(self) -> None:
+        """NIST FIPS 197 Appendix B test vector."""
+        key = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
+        plaintext = bytes.fromhex("3243f6a8885a308d313198a2e0370734")
+        expected_block = bytes.fromhex("3925841d02dc09fbdc118597196a0b32")
+
+        ct = py_encrypt(plaintext, key)
+        assert len(ct) == 32  # 16 data + 16 PKCS7 padding
+        assert ct[:16] == expected_block
+
+    @needs_openssl
+    def test_nist_aes128_openssl(self) -> None:
+        """Same NIST vector via OpenSSL backend."""
+        key = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
+        plaintext = bytes.fromhex("3243f6a8885a308d313198a2e0370734")
+        expected_block = bytes.fromhex("3925841d02dc09fbdc118597196a0b32")
+
+        ct = ossl_encrypt(plaintext, key)
+        assert len(ct) == 32
+        assert ct[:16] == expected_block
+
+
+class TestPythonRoundtrip:
+    """Pure-Python backend roundtrip — always run."""
+
+    @pytest.mark.parametrize("size", [0, 1, 15, 16, 17, 31, 32, 100, 255, 1024])
+    def test_roundtrip(self, size: int) -> None:
+        key = os.urandom(16)
+        data = os.urandom(size)
+        assert py_decrypt(py_encrypt(data, key), key) == data
+
+
+@needs_openssl
+class TestH2H:
+    """Head-to-head: pure Python vs OpenSSL."""
 
     @pytest.mark.parametrize("size", [0, 1, 15, 16, 17, 31, 32, 100, 255, 1024])
     def test_encrypt_matches(self, size: int) -> None:
-        """Vendored encrypt must produce identical ciphertext."""
+        """Both backends must produce identical ciphertext."""
         key = os.urandom(16)
         data = os.urandom(size)
-        assert aes128_ecb_encrypt(data, key) == _pycrypto_encrypt(data, key)
+        assert py_encrypt(data, key) == ossl_encrypt(data, key)
 
     @pytest.mark.parametrize("size", [0, 1, 15, 16, 17, 31, 32, 100, 255, 1024])
     def test_decrypt_matches(self, size: int) -> None:
-        """Vendored decrypt must produce identical plaintext."""
+        """Both backends must produce identical plaintext."""
         key = os.urandom(16)
         data = os.urandom(size)
-        ciphertext = _pycrypto_encrypt(data, key)
-        assert aes128_ecb_decrypt(ciphertext, key) == data
+        ct = ossl_encrypt(data, key)
+        assert py_decrypt(ct, key) == data
 
     def test_cross_encrypt_decrypt(self) -> None:
         """Encrypt with one, decrypt with the other, both directions."""
         key = os.urandom(16)
         data = b"cross-compatibility test payload!"
 
-        # vendored encrypt -> pycrypto decrypt
-        ct_vendored = aes128_ecb_encrypt(data, key)
-        assert _pycrypto_decrypt(ct_vendored, key) == data
+        ct_py = py_encrypt(data, key)
+        assert ossl_decrypt(ct_py, key) == data
 
-        # pycrypto encrypt -> vendored decrypt
-        ct_pycrypto = _pycrypto_encrypt(data, key)
-        assert aes128_ecb_decrypt(ct_pycrypto, key) == data
+        ct_ossl = ossl_encrypt(data, key)
+        assert py_decrypt(ct_ossl, key) == data
 
     def test_large_random_data(self) -> None:
         """64KB random data, both directions."""
         key = os.urandom(16)
         data = os.urandom(65536)
 
-        ct_v = aes128_ecb_encrypt(data, key)
-        ct_p = _pycrypto_encrypt(data, key)
-        assert ct_v == ct_p
+        ct_py = py_encrypt(data, key)
+        ct_ossl = ossl_encrypt(data, key)
+        assert ct_py == ct_ossl
 
-        assert aes128_ecb_decrypt(ct_v, key) == data
-        assert _pycrypto_decrypt(ct_v, key) == data
-
-    def test_known_vector(self) -> None:
-        """NIST AES-128 test vector (single block, no padding needed for raw block)."""
-        # FIPS 197 Appendix B
-        key = bytes.fromhex("2b7e151628aed2a6abf7158809cf4f3c")
-        plaintext = bytes.fromhex("3243f6a8885a308d313198a2e0370734")
-
-        # For ECB with PKCS7, a full 16-byte block gets 16 bytes of padding appended,
-        # so we test the first 16 bytes of ciphertext match the NIST expected output.
-        expected_block = bytes.fromhex("3925841d02dc09fbdc118597196a0b32")
-
-        ct_v = aes128_ecb_encrypt(plaintext, key)
-        ct_p = _pycrypto_encrypt(plaintext, key)
-
-        # Both should have 32 bytes (16 data + 16 padding)
-        assert len(ct_v) == 32
-        assert ct_v[:16] == expected_block
-        assert ct_v == ct_p
+        assert py_decrypt(ct_ossl, key) == data
+        assert ossl_decrypt(ct_py, key) == data
 
     @pytest.mark.parametrize("_run", range(20))
     def test_random_stress(self, _run: int) -> None:
@@ -101,8 +107,8 @@ class TestAesH2H:
         size = int.from_bytes(os.urandom(2), "big") % 4097
         data = os.urandom(size)
 
-        ct_v = aes128_ecb_encrypt(data, key)
-        ct_p = _pycrypto_encrypt(data, key)
-        assert ct_v == ct_p, f"Mismatch at size={size}"
+        ct_py = py_encrypt(data, key)
+        ct_ossl = ossl_encrypt(data, key)
+        assert ct_py == ct_ossl, f"Mismatch at size={size}"
 
-        assert aes128_ecb_decrypt(ct_v, key) == data
+        assert ossl_decrypt(ct_py, key) == data

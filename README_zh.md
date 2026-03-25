@@ -11,7 +11,7 @@
 
 ## 特性
 
-- **依赖精简** — 仅需 `pycryptodome` 用于 AES 媒体加密
+- **零运行时依赖** — AES 媒体加密通过 ctypes 调用 OpenSSL，纯 Python 自动兜底
 - **消息队列语义** — `login()` / `send()` / `recv()` 三个核心接口
 - **状态自动管理** — `context_token`、sync cursor 内部缓存，调用方无需关心
 - **凭证持久化** — 扫码登录后 token 自动保存，重启免登录

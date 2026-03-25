@@ -17,12 +17,10 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from Crypto.Cipher import AES
-
+from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt, aes_ecb_padded_size
 from weilink.models import UploadMediaType, UploadedMedia
 
 CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
-AES_BLOCK_SIZE = 16
 UPLOAD_MAX_RETRIES = 3
 # Match JS encodeURIComponent: unreserved chars that should NOT be percent-encoded
 _URI_SAFE = "-_.!~*'()"
@@ -47,65 +45,6 @@ def _decode_aes_key(aes_key: str) -> bytes:
     return base64.b64decode(aes_key)
 
 
-def _pkcs7_pad(data: bytes) -> bytes:
-    """Apply PKCS7 padding to data."""
-    pad_len = AES_BLOCK_SIZE - (len(data) % AES_BLOCK_SIZE)
-    return data + bytes([pad_len] * pad_len)
-
-
-def _pkcs7_unpad(data: bytes) -> bytes:
-    """Remove PKCS7 padding from data."""
-    if not data:
-        return data
-    pad_len = data[-1]
-    if pad_len < 1 or pad_len > AES_BLOCK_SIZE:
-        return data
-    if data[-pad_len:] != bytes([pad_len] * pad_len):
-        return data
-    return data[:-pad_len]
-
-
-def aes_ecb_encrypt(data: bytes, key: bytes) -> bytes:
-    """Encrypt data with AES-128-ECB and PKCS7 padding.
-
-    Args:
-        data: Plaintext bytes.
-        key: 16-byte AES key.
-
-    Returns:
-        Ciphertext bytes.
-    """
-    cipher = AES.new(key, AES.MODE_ECB)
-    return cipher.encrypt(_pkcs7_pad(data))
-
-
-def aes_ecb_decrypt(data: bytes, key: bytes) -> bytes:
-    """Decrypt AES-128-ECB ciphertext and remove PKCS7 padding.
-
-    Args:
-        data: Ciphertext bytes.
-        key: 16-byte AES key.
-
-    Returns:
-        Plaintext bytes.
-    """
-    cipher = AES.new(key, AES.MODE_ECB)
-    return _pkcs7_unpad(cipher.decrypt(data))
-
-
-def aes_ecb_padded_size(plaintext_size: int) -> int:
-    """Calculate the ciphertext size after AES-ECB + PKCS7 padding.
-
-    Args:
-        plaintext_size: Size of the original data.
-
-    Returns:
-        Size of the encrypted data.
-    """
-    pad_len = AES_BLOCK_SIZE - (plaintext_size % AES_BLOCK_SIZE)
-    return plaintext_size + pad_len
-
-
 def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
     """Download and decrypt a media file from CDN.
 
@@ -117,7 +56,6 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
         Decrypted file bytes.
 
     Raises:
-        ImportError: If pycryptodome is not installed.
         urllib.error.URLError: If the download fails.
     """
     key = _decode_aes_key(aes_key)
@@ -128,7 +66,7 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
     with urllib.request.urlopen(req, timeout=60) as resp:
         encrypted = resp.read()
 
-    return aes_ecb_decrypt(encrypted, key)
+    return aes128_ecb_decrypt(encrypted, key)
 
 
 def upload_media(
@@ -148,13 +86,11 @@ def upload_media(
     Returns:
         UploadedMedia with CDN reference info.
 
-    Raises:
-        ImportError: If pycryptodome is not installed.
     """
     # Generate random AES key and filekey
-    aes_key = os.urandom(AES_BLOCK_SIZE)
+    aes_key = os.urandom(16)
     aes_key_hex = aes_key.hex()
-    filekey = os.urandom(AES_BLOCK_SIZE).hex()
+    filekey = os.urandom(16).hex()
 
     # Compute file metadata
     file_md5 = hashlib.md5(file_data).hexdigest()
@@ -186,7 +122,7 @@ def upload_media(
         raise RuntimeError(f"No upload_param in response: {url_resp}")
 
     # Encrypt and upload to CDN
-    encrypted = aes_ecb_encrypt(file_data, aes_key)
+    encrypted = aes128_ecb_encrypt(file_data, aes_key)
 
     upload_url = (
         f"{CDN_BASE}/upload"
