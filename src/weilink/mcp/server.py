@@ -88,6 +88,33 @@ def _serialize_message(msg: Message) -> dict[str, Any]:
             "thumb_width": msg.video.thumb_width,
             "thumb_height": msg.video.thumb_height,
         }
+    if msg.ref_msg is not None:
+        ref: dict[str, Any] = {"msg_type": msg.ref_msg.msg_type.name}
+        if msg.ref_msg.text is not None:
+            ref["text"] = msg.ref_msg.text
+        if msg.ref_msg.image is not None:
+            ref["image"] = {
+                "url": msg.ref_msg.image.url,
+                "thumb_width": msg.ref_msg.image.thumb_width,
+                "thumb_height": msg.ref_msg.image.thumb_height,
+            }
+        if msg.ref_msg.voice is not None:
+            ref["voice"] = {
+                "playtime": msg.ref_msg.voice.playtime,
+                "text": msg.ref_msg.voice.text,
+            }
+        if msg.ref_msg.file is not None:
+            ref["file"] = {
+                "file_name": msg.ref_msg.file.file_name,
+                "file_size": msg.ref_msg.file.file_size,
+            }
+        if msg.ref_msg.video is not None:
+            ref["video"] = {
+                "play_length": msg.ref_msg.video.play_length,
+                "thumb_width": msg.ref_msg.video.thumb_width,
+                "thumb_height": msg.ref_msg.video.thumb_height,
+            }
+        result["ref_msg"] = ref
     return result
 
 

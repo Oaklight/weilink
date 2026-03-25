@@ -251,6 +251,80 @@ class TestParseMessage:
             msg = wl._parse_message(raw)
             assert msg is None
 
+    def test_parse_text_with_ref_msg(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "context_token": "ctx_ref",
+                "item_list": [
+                    {
+                        "type": 1,
+                        "text_item": {"text": "replying to you"},
+                        "ref_msg": {
+                            "message_item": {
+                                "type": 1,
+                                "text_item": {"text": "original message"},
+                            }
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.text == "replying to you"
+            assert msg.ref_msg is not None
+            assert msg.ref_msg.msg_type == MessageType.TEXT
+            assert msg.ref_msg.text == "original message"
+
+    def test_parse_text_without_ref_msg(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "context_token": "ctx_plain",
+                "item_list": [{"type": 1, "text_item": {"text": "no quote"}}],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.ref_msg is None
+
+    def test_parse_ref_msg_image(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "context_token": "ctx_refimg",
+                "item_list": [
+                    {
+                        "type": 1,
+                        "text_item": {"text": "look at this"},
+                        "ref_msg": {
+                            "message_item": {
+                                "type": 2,
+                                "image_item": {
+                                    "media": {
+                                        "encrypt_query_param": "p1",
+                                        "aes_key": "k1",
+                                    },
+                                    "url": "https://example.com/ref.jpg",
+                                    "thumb_width": 50,
+                                    "thumb_height": 60,
+                                },
+                            }
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.text == "look at this"
+            assert msg.ref_msg is not None
+            assert msg.ref_msg.msg_type == MessageType.IMAGE
+            assert msg.ref_msg.image is not None
+            assert msg.ref_msg.image.url == "https://example.com/ref.jpg"
+            assert msg.ref_msg.image.thumb_width == 50
+
 
 class TestContextPersistence:
     """Tests for experimental context_tokens persistence (contexts.json)."""

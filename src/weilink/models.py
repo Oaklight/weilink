@@ -181,6 +181,32 @@ class VideoInfo:
 
 
 @dataclass(frozen=True)
+class RefMessage:
+    """A quoted / referenced message embedded in a received message.
+
+    When a WeChat user replies to (quotes) a previous message, the quoted
+    content is available here.  Only content fields are present — the
+    protocol does not expose sender, timestamp, or message-id for the
+    referenced message.
+
+    Attributes:
+        msg_type: Content type of the referenced message.
+        text: Text content, if msg_type is TEXT.
+        image: Image metadata, if msg_type is IMAGE.
+        voice: Voice metadata, if msg_type is VOICE.
+        file: File metadata, if msg_type is FILE.
+        video: Video metadata, if msg_type is VIDEO.
+    """
+
+    msg_type: MessageType = MessageType.TEXT
+    text: str | None = None
+    image: ImageInfo | None = None
+    voice: VoiceInfo | None = None
+    file: FileInfo | None = None
+    video: VideoInfo | None = None
+
+
+@dataclass(frozen=True)
 class Message:
     """A received WeChat message.
 
@@ -195,6 +221,7 @@ class Message:
         timestamp: Creation time in milliseconds.
         message_id: Unique message identifier.
         context_token: Opaque token required for replying (managed internally).
+        ref_msg: Quoted/referenced message, if this is a reply.
     """
 
     from_user: str
@@ -208,6 +235,7 @@ class Message:
     message_id: int | None = None
     context_token: str = ""
     bot_id: str | None = None
+    ref_msg: RefMessage | None = None
 
 
 @dataclass

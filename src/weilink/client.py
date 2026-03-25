@@ -21,6 +21,7 @@ from weilink.models import (
     MediaInfo,
     Message,
     MessageType,
+    RefMessage,
     SendMediaType,
     SendResult,
     UploadMediaType,
@@ -1202,6 +1203,12 @@ class WeiLink:
             elif item_type == 5 and first.get("video_item"):
                 video = self._parse_video_item(first["video_item"])
 
+        ref_msg: RefMessage | None = None
+        if items:
+            ref_raw = first.get("ref_msg")
+            if ref_raw:
+                ref_msg = self._parse_ref_msg(ref_raw)
+
         return Message(
             from_user=from_user,
             text=text,
@@ -1214,6 +1221,7 @@ class WeiLink:
             message_id=raw.get("message_id"),
             context_token=raw.get("context_token", ""),
             bot_id=bot_id,
+            ref_msg=ref_msg,
         )
 
     @staticmethod
@@ -1223,6 +1231,46 @@ class WeiLink:
             encrypt_query_param=raw.get("encrypt_query_param", ""),
             aes_key=raw.get("aes_key", ""),
             encrypt_type=raw.get("encrypt_type", 0),
+        )
+
+    @classmethod
+    def _parse_ref_msg(cls, raw: dict[str, Any]) -> RefMessage | None:
+        """Parse a ref_msg dict into a RefMessage."""
+        item = raw.get("message_item")
+        if not item:
+            return None
+
+        item_type = item.get("type", 1)
+        msg_type = (
+            MessageType(item_type)
+            if item_type in MessageType.__members__.values()
+            else MessageType.TEXT
+        )
+
+        text: str | None = None
+        image: ImageInfo | None = None
+        voice: VoiceInfo | None = None
+        file: FileInfo | None = None
+        video: VideoInfo | None = None
+
+        if item_type == 1 and item.get("text_item"):
+            text = item["text_item"].get("text")
+        elif item_type == 2 and item.get("image_item"):
+            image = cls._parse_image_item(item["image_item"])
+        elif item_type == 3 and item.get("voice_item"):
+            voice = cls._parse_voice_item(item["voice_item"])
+        elif item_type == 4 and item.get("file_item"):
+            file = cls._parse_file_item(item["file_item"])
+        elif item_type == 5 and item.get("video_item"):
+            video = cls._parse_video_item(item["video_item"])
+
+        return RefMessage(
+            msg_type=msg_type,
+            text=text,
+            image=image,
+            voice=voice,
+            file=file,
+            video=video,
         )
 
     @classmethod
