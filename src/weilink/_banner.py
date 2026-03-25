@@ -86,7 +86,6 @@ def display_startup_banner(no_banner: bool = False) -> None:
 
     latest = get_latest_pypi_version()
 
-    print("=" * 60)
     if latest and _parse_version(latest) > _parse_version(__version__):
         print(f"  WeiLink v{__version__}")
         print(f"  Update available: v{latest}")
@@ -94,4 +93,4 @@ def display_startup_banner(no_banner: bool = False) -> None:
         print(f"    {CHANGELOG_URL}")
     else:
         print(f"  WeiLink v{__version__} (latest)")
-    print("=" * 60)
+    print()

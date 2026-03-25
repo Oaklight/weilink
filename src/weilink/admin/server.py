@@ -100,7 +100,7 @@ class AdminServer:
         url = f"http://{display_host}:{self._port}"
 
         info = AdminInfo(host=self._host, port=self._port, url=url)
-        logger.info("Admin server started at %s", url)
+        logger.debug("Admin server started at %s", url)
         return info
 
     def _run(self) -> None:

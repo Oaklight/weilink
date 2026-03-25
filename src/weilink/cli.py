@@ -28,11 +28,19 @@ def _run_admin(args: argparse.Namespace) -> None:
         kwargs["base_path"] = Path(args.base_path)
 
     wl = WeiLink(**kwargs)
+
+    # Session summary
+    connected = [n for n, s in wl._sessions.items() if s.bot_info]
+    if connected:
+        print(f"  {len(connected)} session(s) loaded: {', '.join(connected)}")
+    else:
+        print("  No connected sessions")
+
     info = wl.start_admin(host=args.host, port=args.port)
 
-    print(f"WeiLink admin panel running at {info.url}")
-    print(f"Data directory: {wl._base_path}")
-    print("Press Ctrl+C to stop.")
+    print(f"  Admin panel: {info.url}")
+    print(f"  Data: {wl._base_path}")
+    print("  Press Ctrl+C to stop.")
 
     stop = threading.Event()
 
