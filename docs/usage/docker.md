@@ -1,6 +1,6 @@
 # Docker Deployment
 
-The WeiLink Docker image bundles both the **MCP server** (for AI agent integration) and the **admin panel** (web UI for session management) in a single container. For CLI usage outside Docker, see [CLI Reference](cli.md).
+The WeiLink Docker image bundles the **MCP / OpenAPI servers** (for AI agents and other LLM tools to integrate with) and the **admin panel** (web UI for session management) in a single container. For CLI usage outside Docker, see [CLI Reference](cli.md).
 
 ## Quick Start
 
