@@ -4,7 +4,7 @@ The WeiLink Docker image bundles both the **MCP server** (for AI agent integrati
 
 ## Unified CLI
 
-The `weilink` command provides two subcommands:
+The `weilink` command provides three subcommands:
 
 ```bash
 # Admin panel only
@@ -15,6 +15,12 @@ weilink mcp
 
 # MCP server (SSE) + admin panel in one process
 weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
+
+# OpenAPI server (REST API)
+weilink openapi --host 0.0.0.0 -p 8000
+
+# OpenAPI server + admin panel in one process
+weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
 ```
 
 ### `weilink admin` Options
@@ -36,6 +42,17 @@ weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
 | `-d, --base-path` | Data directory (profile path) | `~/.weilink/` |
 | `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+
+### `weilink openapi` Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--host` | Host address to bind to | `127.0.0.1` |
+| `-p, --port` | Port number | `8000` |
+| `-d, --base-path` | Data directory (profile path) | `~/.weilink/` |
+| `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
+| `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+| `--no-banner` | Suppress the ASCII banner on startup | *(off)* |
 
 ### Multiple Profiles
 

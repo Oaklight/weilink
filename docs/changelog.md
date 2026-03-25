@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Unified CLI — single `weilink` command with `admin` and `mcp` subcommands
+- Fix `recv()` crash on Python 3.10 when multiple sessions are active (`concurrent.futures.TimeoutError` was not caught)
+- OpenAPI server — expose bot tools as REST API endpoints via `weilink openapi` subcommand
+- `get_updates()` now accepts a `timeout` parameter
+- Unified CLI — single `weilink` command with `admin`, `mcp`, and `openapi` subcommands
 - MCP multi-transport — support `stdio`, `sse`, and `streamable-http` transports
 - Web admin panel — browser UI for session management, QR login, and status monitoring
 - Docker deployment — container image with MCP SSE + admin panel, `docker-compose.yaml` included

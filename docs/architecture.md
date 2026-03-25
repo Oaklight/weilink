@@ -24,7 +24,13 @@ graph TB
     end
 
     subgraph "weilink.mcp"
-        mcp_srv["__init__.py<br/><i>MCP server entry</i>"]
+        mcp_srv["server.py<br/><i>Tool definitions</i>"]
+    end
+
+    subgraph "toolregistry-server"
+        tr["ToolRegistry<br/><i>Single tool registry</i>"]
+        mcp_out["MCP transport<br/><i>stdio / sse / streamable-http</i>"]
+        openapi_out["OpenAPI transport<br/><i>REST + Swagger UI</i>"]
     end
 
     client --> protocol
@@ -37,6 +43,9 @@ graph TB
     admin_hdl --> protocol
     admin_hdl --> qr
     admin_hdl --> client
+    mcp_srv --> tr
+    tr --> mcp_out
+    tr --> openapi_out
     mcp_srv --> client
 ```
 
@@ -234,3 +243,36 @@ flowchart TD
 ```
 
 Read-only endpoints (status, sessions) access session data without locking. Write operations (login confirmation, logout, rename) are serialized through a `threading.Lock` to prevent race conditions.
+
+## Dual-Mode Server Architecture
+
+WeiLink uses [toolregistry-server](https://github.com/Oaklight/toolregistry) to expose bot tools via both **MCP** and **OpenAPI** protocols from a single set of tool definitions.
+
+```mermaid
+flowchart LR
+    subgraph "weilink.mcp.server"
+        tools["Tool functions<br/>(recv, send, download, ...)"]
+        registry["ToolRegistry"]
+    end
+
+    subgraph "toolregistry-server"
+        rt["RouteTable"]
+        mcp["MCP Server<br/>(stdio / sse / streamable-http)"]
+        openapi["OpenAPI App<br/>(FastAPI + Swagger UI)"]
+    end
+
+    tools --> registry
+    registry --> rt
+    rt --> mcp
+    rt --> openapi
+
+    mcp -->|"MCP protocol"| agent["AI Agent"]
+    openapi -->|"REST API"| client["HTTP Client"]
+```
+
+Tools are defined once as async Python functions in `weilink.mcp.server`, registered into a `ToolRegistry`, and then served via either transport:
+
+- **`weilink mcp`** — creates an MCP server using `toolregistry_server.mcp`
+- **`weilink openapi`** — creates a FastAPI app using `toolregistry_server.openapi`
+
+Both modes share the same global `WeiLink` client instance and message cache.
