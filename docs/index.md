@@ -19,9 +19,11 @@ Lightweight Python SDK for the WeChat iLink Bot protocol.
 - **Message queue semantics** — `login()` / `send()` / `recv()`
 - **Automatic state management** — `context_token` and cursor handled internally
 - **Credential persistence** — Token saved after QR login
-- **Unified CLI** — Single `weilink` command with `admin` and `mcp` subcommands
+- **Quoted message parsing** — `Message.ref_msg` exposes referenced messages in user replies
+- **Unified CLI** — Single `weilink` command with `admin`, `mcp`, and `openapi` subcommands
 - **Web admin panel** — Optional browser UI for session management, QR login, and [Docker deployment](usage/docker.md)
-- **MCP server** — Optional [MCP](usage/mcp.md) integration for AI agents with stdio/SSE/streamable-http transports (`pip install weilink[mcp]`)
+- **MCP / OpenAPI server** — Optional [MCP](usage/mcp.md) and [OpenAPI](usage/openapi.md) server for AI agents and REST integrations (`pip install weilink[server]`)
+- **Docker ready** — Multi-platform container image on [Docker Hub](https://hub.docker.com/r/oaklight/weilink) (amd64, arm64, armv7)
 
 ## Quick Start
 
