@@ -73,6 +73,22 @@ Bot calls send()   → SDK uses stored context_token → iLink delivers message
 !!! tip "Auto-recv"
     Pass `auto_recv=True` to `send()` to automatically call `recv()` before sending, ensuring fresh context tokens. The MCP server enables this by default.
 
+## Quoted Messages (ref_msg)
+
+When a user **replies to** (quotes) a previous message, the iLink protocol includes the referenced message content in the payload. The SDK parses this into a `RefMessage` object accessible via `Message.ref_msg`.
+
+```python
+for msg in wl.recv():
+    if msg.ref_msg is not None:
+        print(f"Quoted: {msg.ref_msg.text}")
+    print(f"New: {msg.text}")
+```
+
+`RefMessage` carries the same media fields as `Message` (`text`, `image`, `voice`, `file`, `video`) but **no metadata** (no `from_user`, `message_id`, or `timestamp`) — the protocol does not provide these for quoted messages.
+
+!!! note
+    When the quoted message is an image or other media-only message, some WeChat clients do not include `ref_msg` in the protocol payload. In that case, `msg.ref_msg` will be `None`.
+
 ## Message Flow
 
 ### Receiving

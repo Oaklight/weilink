@@ -54,6 +54,17 @@ wl.send(user, video=vid_data)
 wl.send(user, "Check these photos", image=[img1, img2])
 ```
 
+## Quoted Messages
+
+When a user replies to a previous message, `msg.ref_msg` contains the quoted content:
+
+```python
+for msg in wl.recv():
+    if msg.ref_msg:
+        print(f"Replying to: {msg.ref_msg.text}")
+    print(f"Message: {msg.text}")
+```
+
 ## Typing Indicator
 
 ```python
