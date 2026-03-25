@@ -93,7 +93,7 @@ help:
 	@echo "  clean-package  - Remove build artifacts"
 	@echo ""
 	@echo "Docker:"
-	@echo "  build-docker   - Build Docker image"
+	@echo "  build-docker   - Build Docker image (local x64)"
 	@echo "  push-docker    - Push Docker image to registry"
 	@echo "  clean-docker   - Clean Docker images"
 	@echo ""

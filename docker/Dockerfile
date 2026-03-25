@@ -25,28 +25,28 @@ RUN if [ -d "/tmp/build/dist" ] && [ "$(ls -A /tmp/build/dist 2>/dev/null)" ]; t
         cp /tmp/build/dist/*.whl /tmp/dist/ 2>/dev/null || true; \
     fi
 
-# Install weilink[mcp]: local wheel > specific version > latest from PyPI
+# Install weilink[server]: local wheel > specific version > latest from PyPI
 # Then remove pip/setuptools to save ~10MB
 RUN if [ -n "$LOCAL_WHEEL" ] && [ -f "/tmp/dist/$LOCAL_WHEEL" ]; then \
         echo "Installing from local wheel: $LOCAL_WHEEL"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[mcp]"; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[server]"; \
         else \
-            pip install --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[mcp]"; \
+            pip install --no-cache-dir "/tmp/dist/${LOCAL_WHEEL}[server]"; \
         fi; \
     elif [ -n "$PACKAGE_VERSION" ]; then \
         echo "Installing weilink version: $PACKAGE_VERSION"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[mcp]==$PACKAGE_VERSION"; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[server]==$PACKAGE_VERSION"; \
         else \
-            pip install --no-cache-dir "weilink[mcp]==$PACKAGE_VERSION"; \
+            pip install --no-cache-dir "weilink[server]==$PACKAGE_VERSION"; \
         fi; \
     else \
         echo "Installing latest weilink from PyPI"; \
         if [ -n "$PYPI_MIRROR" ]; then \
-            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[mcp]"; \
+            pip install -i "$PYPI_MIRROR" --no-cache-dir "weilink[server]"; \
         else \
-            pip install --no-cache-dir "weilink[mcp]"; \
+            pip install --no-cache-dir "weilink[server]"; \
         fi; \
     fi && \
     pip uninstall -y pip setuptools 2>/dev/null || true && \
