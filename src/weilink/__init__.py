@@ -2,7 +2,7 @@
 
 __version__ = "0.3.0b2"
 
-from weilink.client import WeiLink
+from weilink.client import Session, WeiLink
 from weilink.models import (
     BotInfo,
     FileInfo,
@@ -17,6 +17,7 @@ from weilink.models import (
 )
 
 __all__ = [
+    "Session",
     "WeiLink",
     "BotInfo",
     "FileInfo",

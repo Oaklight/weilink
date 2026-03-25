@@ -43,12 +43,102 @@ class _Session:
     cursor: str = ""
     context_tokens: dict[str, str] = field(default_factory=dict)
     context_timestamps: dict[str, float] = field(default_factory=dict)
+    send_timestamps: dict[str, float] = field(default_factory=dict)
+    user_first_seen: dict[str, float] = field(default_factory=dict)
     typing_tickets: dict[str, str] = field(default_factory=dict)
+    created_at: float | None = None
 
     @property
     def contexts_path(self) -> Path:
         """Path to the contexts persistence file (sibling to token.json)."""
         return self.token_path.parent / "contexts.json"
+
+
+class Session:
+    """Public handle for a WeiLink session.
+
+    Obtained via ``wl.sessions["name"]``.  Provides read-only properties
+    and management methods (rename, set_default, login, logout).
+
+    Example::
+
+        wl = WeiLink()
+        for name in wl.sessions:
+            print(name)
+
+        s = wl.sessions["zb"]
+        s.set_default()
+        s.rename("new_name")
+    """
+
+    def __init__(self, client: WeiLink, internal: _Session) -> None:
+        self._client = client
+        self._internal = internal
+
+    @property
+    def name(self) -> str:
+        """Session name."""
+        return self._internal.name
+
+    @property
+    def bot_id(self) -> str | None:
+        """Bot identifier, or ``None`` if not logged in."""
+        bi = self._internal.bot_info
+        return bi.bot_id if bi else None
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether this session has valid credentials."""
+        return self._internal.bot_info is not None
+
+    @property
+    def is_default(self) -> bool:
+        """Whether this session is the current default."""
+        return self._internal is self._client._default_session
+
+    @property
+    def created_at(self) -> float | None:
+        """Epoch timestamp when this session was first saved, or ``None``."""
+        return self._internal.created_at
+
+    def rename(self, new_name: str) -> None:
+        """Rename this session.
+
+        Args:
+            new_name: New session name.
+
+        Raises:
+            ValueError: If *new_name* is already taken or is ``"default"``.
+        """
+        self._client.rename_session(self._internal.name, new_name)
+
+    def set_default(self) -> None:
+        """Set this session as the default.
+
+        The default session is used when API methods are called without
+        a session name (e.g. ``login()``, ``send()``).
+        """
+        self._client.set_default(self._internal.name)
+
+    def login(self, force: bool = False) -> BotInfo:
+        """Login this session via QR code scan.
+
+        Args:
+            force: Force a new QR code login even if credentials exist.
+
+        Returns:
+            BotInfo with bot_id, base_url, and token.
+        """
+        return self._client.login(name=self._internal.name, force=force)
+
+    def logout(self) -> None:
+        """Logout this session, removing persisted credentials."""
+        self._client.logout(self._internal.name)
+
+    def __repr__(self) -> str:
+        status = "connected" if self.is_connected else "disconnected"
+        default = ", default" if self.is_default else ""
+        return f"Session({self.name!r}, {status}{default})"
 
 
 class WeiLink:
@@ -103,15 +193,57 @@ class WeiLink:
 
         self._sessions: dict[str, _Session] = {}
         self._admin_server: Any = None
-        self._default_session = self._create_session(_DEFAULT_SESSION, default_token)
 
-        # Auto-discover named sessions from disk
+        # Auto-discover named sessions from disk first
+        named: list[_Session] = []
         if self._base_path.is_dir():
             for child in sorted(self._base_path.iterdir()):
                 if child.is_dir() and (child / "token.json").exists():
                     name = child.name
                     if name not in self._sessions:
-                        self._create_session(name, child / "token.json")
+                        named.append(self._create_session(name, child / "token.json"))
+
+        if default_token.exists() or not named:
+            # Default token exists, or no named sessions: create default
+            self._default_session = self._create_session(
+                _DEFAULT_SESSION, default_token
+            )
+        else:
+            # No default token but named sessions exist: skip phantom default.
+            # Check for persisted default choice first.
+            saved_default = self._load_default_session_name()
+            if saved_default and saved_default in self._sessions:
+                self._default_session = self._sessions[saved_default]
+            else:
+                # Pick the earliest-created connected session as default.
+                connected = [s for s in named if s.bot_info]
+                if connected:
+                    connected.sort(key=lambda s: s.created_at or float("inf"))
+                    self._default_session = connected[0]
+                else:
+                    self._default_session = named[0]
+
+    # ------------------------------------------------------------------
+    # Default session persistence
+    # ------------------------------------------------------------------
+
+    _DEFAULT_SESSION_FILE = ".default_session"
+
+    def _load_default_session_name(self) -> str | None:
+        """Load the persisted default session name from disk."""
+        p = self._base_path / self._DEFAULT_SESSION_FILE
+        if not p.exists():
+            return None
+        try:
+            return p.read_text().strip() or None
+        except OSError:
+            return None
+
+    def _save_default_session_name(self) -> None:
+        """Persist the current default session name to disk."""
+        self._base_path.mkdir(parents=True, exist_ok=True)
+        p = self._base_path / self._DEFAULT_SESSION_FILE
+        p.write_text(self._default_session.name)
 
     # ------------------------------------------------------------------
     # Session management
@@ -127,11 +259,12 @@ class WeiLink:
 
     def _session_for_name(self, name: str | None) -> _Session:
         """Resolve a session by name, falling back to default."""
-        key = name or _DEFAULT_SESSION
-        session = self._sessions.get(key)
+        if name is None:
+            return self._default_session
+        session = self._sessions.get(name)
         if session is None:
             raise ValueError(
-                f"No session named {key!r}. Call login(name={key!r}) first."
+                f"No session named {name!r}. Call login(name={name!r}) first."
             )
         return session
 
@@ -149,6 +282,11 @@ class WeiLink:
         """
         if old_name not in self._sessions:
             raise ValueError(f"No session named {old_name!r}")
+        if new_name == _DEFAULT_SESSION:
+            raise ValueError(
+                f"Cannot rename to {_DEFAULT_SESSION!r}. "
+                "Use set_default() to change which session is the default."
+            )
         if new_name in self._sessions:
             raise ValueError(f"Session {new_name!r} already exists")
 
@@ -177,9 +315,9 @@ class WeiLink:
         session.token_path = new_token_path
         self._sessions[new_name] = session
 
-        # Update default session reference if needed
+        # Update default session persistence if this was the default
         if self._default_session is session:
-            self._default_session = session
+            self._save_default_session_name()
 
         logger.info("Renamed session %r -> %r", old_name, new_name)
 
@@ -192,7 +330,10 @@ class WeiLink:
         Raises:
             ValueError: If the session does not exist.
         """
-        key = name or _DEFAULT_SESSION
+        if name is None:
+            key = self._default_session.name
+        else:
+            key = name
         if key not in self._sessions:
             raise ValueError(f"No session named {key!r}")
 
@@ -247,7 +388,14 @@ class WeiLink:
                 token=data["token"],
             )
             session.cursor = data.get("cursor", "")
-            logger.info(
+            session.created_at = data.get("created_at")
+            if session.created_at is None:
+                # Legacy token without created_at: fall back to file mtime
+                try:
+                    session.created_at = session.token_path.stat().st_mtime
+                except OSError:
+                    pass
+            logger.debug(
                 "Loaded credentials for %s (session=%s)",
                 session.bot_info.bot_id,
                 session.name,
@@ -260,12 +408,15 @@ class WeiLink:
         """Persist bot credentials and cursor for a session."""
         if not session.bot_info:
             return
+        if session.created_at is None:
+            session.created_at = time.time()
         session.token_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "bot_id": session.bot_info.bot_id,
             "base_url": session.bot_info.base_url,
             "token": session.bot_info.token,
             "cursor": session.cursor,
+            "created_at": session.created_at,
         }
         session.token_path.write_text(json.dumps(data, indent=2))
 
@@ -292,6 +443,16 @@ class WeiLink:
             if token and (now - ts) < expiry:
                 session.context_tokens[user_id] = token
                 session.context_timestamps[user_id] = ts
+            # Load send_timestamps and user_first_seen regardless of expiry
+            send_ts = entry.get("send_ts", 0.0)
+            if send_ts:
+                session.send_timestamps[user_id] = send_ts
+            first_seen = entry.get("first_seen", 0.0)
+            if first_seen:
+                session.user_first_seen[user_id] = first_seen
+            elif ts:
+                # Legacy fallback: use earliest known interaction time
+                session.user_first_seen[user_id] = ts
 
         logger.debug(
             "Loaded %d context token(s) from %s",
@@ -303,10 +464,24 @@ class WeiLink:
     def _save_session_contexts(session: _Session) -> None:
         """Persist context tokens for a session."""
         session.token_path.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            user_id: {"t": token, "ts": session.context_timestamps.get(user_id, 0.0)}
-            for user_id, token in session.context_tokens.items()
-        }
+        # Collect all known user IDs across tokens and timestamps
+        all_users = (
+            set(session.context_tokens)
+            | set(session.send_timestamps)
+            | set(session.user_first_seen)
+        )
+        data = {}
+        for user_id in all_users:
+            entry: dict[str, Any] = {}
+            if user_id in session.context_tokens:
+                entry["t"] = session.context_tokens[user_id]
+                entry["ts"] = session.context_timestamps.get(user_id, 0.0)
+            if user_id in session.send_timestamps:
+                entry["send_ts"] = session.send_timestamps[user_id]
+            if user_id in session.user_first_seen:
+                entry["first_seen"] = session.user_first_seen[user_id]
+            if entry:
+                data[user_id] = entry
         session.contexts_path.write_text(json.dumps(data, indent=2))
 
     # ------------------------------------------------------------------
@@ -401,9 +576,37 @@ class WeiLink:
         }
 
     @property
-    def sessions(self) -> list[str]:
-        """List of all session names."""
-        return list(self._sessions.keys())
+    def sessions(self) -> dict[str, Session]:
+        """All sessions as a name -> Session mapping.
+
+        Iterating yields session names (strings)::
+
+            for name in wl.sessions: ...
+            list(wl.sessions)  # ["default", "zb"]
+
+        Dict-like access for Session objects::
+
+            wl.sessions["zb"].rename("new_name")
+            wl.sessions["zb"].set_default()
+        """
+        return {name: Session(self, s) for name, s in self._sessions.items()}
+
+    def set_default(self, name: str) -> None:
+        """Set a named session as the default session.
+
+        The default session is used when API methods are called without
+        a session name (e.g. ``login()``, ``send()``).
+
+        Args:
+            name: Session name to set as default.
+
+        Raises:
+            ValueError: If the session does not exist.
+        """
+        if name not in self._sessions:
+            raise ValueError(f"No session named {name!r}")
+        self._default_session = self._sessions[name]
+        self._save_default_session_name()
 
     # ------------------------------------------------------------------
     # Login
@@ -425,6 +628,11 @@ class WeiLink:
         """
         if name is None:
             session = self._default_session
+        elif name == _DEFAULT_SESSION:
+            raise ValueError(
+                f"{_DEFAULT_SESSION!r} is reserved. "
+                "Use login() without a name for the default session."
+            )
         elif name in self._sessions:
             session = self._sessions[name]
         else:
@@ -573,6 +781,8 @@ class WeiLink:
                 if msg.context_token:
                     session.context_tokens[msg.from_user] = msg.context_token
                     session.context_timestamps[msg.from_user] = time.time()
+                    if msg.from_user not in session.user_first_seen:
+                        session.user_first_seen[msg.from_user] = time.time()
                     context_changed = True
                 messages.append(msg)
 
@@ -746,6 +956,10 @@ class WeiLink:
         if not text and not send_queue:
             logger.warning("send() called with no content")
             return False
+
+        if all_ok:
+            session.send_timestamps[to] = time.time()
+            self._save_session_contexts(session)
 
         return all_ok
 

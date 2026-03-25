@@ -475,14 +475,14 @@ class TestMultiSession:
             wl = WeiLink(token_path=token_path)
             assert wl.is_connected
             assert wl.bot_id == "bot1@im.bot"
-            assert wl.sessions == ["default"]
+            assert list(wl.sessions) == ["default"]
             assert wl.bot_ids == {"default": "bot1@im.bot"}
 
     def test_bot_ids_empty_when_not_connected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             wl = WeiLink(token_path=Path(tmpdir) / "token.json")
             assert wl.bot_ids == {}
-            assert wl.sessions == ["default"]
+            assert list(wl.sessions) == ["default"]
 
     def test_find_session_for_user(self):
         """Auto-routing picks the session with the most recent context token."""
@@ -755,7 +755,8 @@ class TestMultiSession:
             wl = WeiLink(base_path=tmpdir)
             assert "alice" in wl.sessions
             assert "bob" in wl.sessions
-            assert "default" in wl.sessions
+            # No default token.json → phantom default is skipped
+            assert "default" not in wl.sessions
             assert wl.bot_ids["alice"] == "alice@im.bot"
             assert wl.bot_ids["bob"] == "bob@im.bot"
 
@@ -766,4 +767,315 @@ class TestMultiSession:
             (Path(tmpdir) / "some_file.txt").write_text("not a session")
 
             wl = WeiLink(base_path=tmpdir)
-            assert wl.sessions == ["default"]
+            assert list(wl.sessions) == ["default"]
+
+
+class TestSessionObject:
+    """Tests for the public Session object."""
+
+    def test_session_object_properties(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            token_path.write_text(
+                json.dumps(
+                    {
+                        "bot_id": "bot1@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok1",
+                        "created_at": 1700000000.0,
+                    }
+                )
+            )
+            wl = WeiLink(token_path=token_path)
+            s = wl.sessions["default"]
+            assert s.name == "default"
+            assert s.bot_id == "bot1@im.bot"
+            assert s.is_connected is True
+            assert s.is_default is True
+            assert s.created_at == 1700000000.0
+
+    def test_session_repr(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            token_path.write_text(
+                json.dumps(
+                    {
+                        "bot_id": "bot1@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok1",
+                    }
+                )
+            )
+            wl = WeiLink(token_path=token_path)
+            s = wl.sessions["default"]
+            assert "connected" in repr(s)
+            assert "default" in repr(s)
+
+    def test_session_rename_via_object(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+            wl._save_state()
+
+            wl.sessions["default"].rename("pipi")
+            assert "default" not in wl.sessions
+            assert "pipi" in wl.sessions
+
+    def test_session_set_default_via_object(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="zb",
+                token_path=Path(tmpdir) / "zb" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot2@im.bot",
+                    base_url="https://example.com",
+                    token="tok2",
+                ),
+            )
+            wl._sessions["zb"] = s2
+
+            assert wl.bot_id == "bot1@im.bot"
+            wl.sessions["zb"].set_default()
+            assert wl.bot_id == "bot2@im.bot"
+
+    def test_session_logout_via_object(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            session = wl._create_session("foo", Path(tmpdir) / "foo" / "token.json")
+            session.bot_info = BotInfo(
+                bot_id="bot_foo@im.bot",
+                base_url="https://example.com",
+                token="tok_foo",
+            )
+            wl._save_session_state(session)
+
+            wl.sessions["foo"].logout()
+            assert "foo" not in wl.sessions
+
+    def test_sessions_dict_iteration(self):
+        """Iterating sessions gives session names (strings)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            names = list(wl.sessions)
+            assert names == ["default"]
+            assert all(isinstance(n, str) for n in names)
+
+    def test_sessions_dict_access(self):
+        """Dict-like access returns Session objects."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            s = wl.sessions["default"]
+            from weilink.client import Session
+
+            assert isinstance(s, Session)
+
+
+class TestSetDefault:
+    """Tests for set_default functionality."""
+
+    def test_set_default(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="zb",
+                token_path=Path(tmpdir) / "zb" / "token.json",
+                bot_info=BotInfo(
+                    bot_id="bot_zb@im.bot",
+                    base_url="https://example.com",
+                    token="tok_zb",
+                ),
+            )
+            wl._sessions["zb"] = s2
+
+            wl.set_default("zb")
+            assert wl.bot_id == "bot_zb@im.bot"
+            assert wl.sessions["zb"].is_default is True
+            assert wl.sessions["default"].is_default is False
+
+    def test_set_default_nonexistent(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            try:
+                wl.set_default("nope")
+                assert False, "Should raise ValueError"
+            except ValueError:
+                pass
+
+
+class TestNameProtection:
+    """Tests for 'default' name protection."""
+
+    def test_login_name_default_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            try:
+                wl.login(name="default")
+                assert False, "Should raise ValueError"
+            except ValueError as e:
+                assert "reserved" in str(e)
+
+    def test_rename_to_default_rejected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="foo",
+                token_path=Path(tmpdir) / "foo" / "token.json",
+            )
+            wl._sessions["foo"] = s2
+            try:
+                wl.rename_session("foo", "default")
+                assert False, "Should raise ValueError"
+            except ValueError as e:
+                assert "default" in str(e)
+
+
+class TestSkipPhantomDefault:
+    """Tests for skipping phantom default session."""
+
+    def test_skip_phantom_default(self):
+        """No default token + named sessions → no 'default' in sessions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a named session on disk (no default token.json)
+            d = Path(tmpdir) / "zb"
+            d.mkdir()
+            (d / "token.json").write_text(
+                json.dumps(
+                    {
+                        "bot_id": "zb@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok_zb",
+                        "created_at": 1700000000.0,
+                    }
+                )
+            )
+
+            wl = WeiLink(base_path=tmpdir)
+            assert "default" not in wl.sessions
+            assert "zb" in wl.sessions
+            assert wl.bot_id == "zb@im.bot"
+
+    def test_skip_phantom_default_picks_earliest(self):
+        """With multiple named sessions, picks earliest created_at as default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for name, bot_id, ts in [
+                ("beta", "beta@im.bot", 1700002000.0),
+                ("alpha", "alpha@im.bot", 1700001000.0),
+            ]:
+                d = Path(tmpdir) / name
+                d.mkdir()
+                (d / "token.json").write_text(
+                    json.dumps(
+                        {
+                            "bot_id": bot_id,
+                            "base_url": "https://example.com",
+                            "token": f"tok_{name}",
+                            "created_at": ts,
+                        }
+                    )
+                )
+
+            wl = WeiLink(base_path=tmpdir)
+            assert "default" not in wl.sessions
+            # alpha has earlier created_at
+            assert wl.bot_id == "alpha@im.bot"
+
+    def test_first_use_creates_default(self):
+        """No sessions at all → creates default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            assert "default" in wl.sessions
+            assert not wl.is_connected
+
+    def test_default_token_exists_creates_default(self):
+        """When default token.json exists, always creates default session."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "token.json").write_text(
+                json.dumps(
+                    {
+                        "bot_id": "default@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok_default",
+                    }
+                )
+            )
+            # Also a named session
+            d = Path(tmpdir) / "zb"
+            d.mkdir()
+            (d / "token.json").write_text(
+                json.dumps(
+                    {
+                        "bot_id": "zb@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok_zb",
+                    }
+                )
+            )
+
+            wl = WeiLink(base_path=tmpdir)
+            assert "default" in wl.sessions
+            assert "zb" in wl.sessions
+
+
+class TestCreatedAt:
+    """Tests for created_at persistence."""
+
+    def test_created_at_persisted(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            wl = WeiLink(token_path=token_path)
+            wl._bot_info = BotInfo(
+                bot_id="test@im.bot",
+                base_url="https://example.com",
+                token="tok123",
+            )
+            wl._save_state()
+
+            data = json.loads(token_path.read_text())
+            assert "created_at" in data
+            assert isinstance(data["created_at"], float)
+
+            # Reload
+            wl2 = WeiLink(token_path=token_path)
+            assert wl2.sessions["default"].created_at == data["created_at"]
+
+    def test_created_at_not_overwritten(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            token_path = Path(tmpdir) / "token.json"
+            wl = WeiLink(token_path=token_path)
+            wl._bot_info = BotInfo(
+                bot_id="test@im.bot",
+                base_url="https://example.com",
+                token="tok123",
+            )
+            wl._save_state()
+
+            first_ts = json.loads(token_path.read_text())["created_at"]
+
+            # Save again — should keep original
+            wl._save_state()
+            second_ts = json.loads(token_path.read_text())["created_at"]
+            assert first_ts == second_ts
