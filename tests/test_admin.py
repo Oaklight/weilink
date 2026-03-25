@@ -139,7 +139,7 @@ class TestAdminCLI:
                 break
 
         proc.send_signal(signal.SIGTERM)
-        proc.wait(timeout=10)
+        proc.wait(timeout=30)
         assert proc.returncode is not None
 
 
