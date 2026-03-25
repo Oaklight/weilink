@@ -19,7 +19,7 @@ Practical tips and tricky parts discovered during development of the WeChat iLin
 
 ## Message Delivery
 
-- **Batch delayed delivery** — Occasionally, `send()` returns success but messages arrive at the user's WeChat several minutes later in a batch. This is a WeChat / iLink server-side behavior, not an SDK bug. Under investigation ([#2](https://github.com/Oaklight/weilink/issues/2)).
+- **Batch delayed delivery** — Occasionally, `send()` returns success but messages arrive at the user's WeChat several minutes later in a batch. This is a WeChat / iLink server-side behavior, not an SDK bug. Using `auto_recv=True` on `send()` may partially mitigate this by refreshing context tokens before sending. Under investigation ([#2](https://github.com/Oaklight/weilink/issues/2)).
 
 ## Context Tokens
 

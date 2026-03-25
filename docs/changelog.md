@@ -4,24 +4,19 @@
 
 ### New Features
 
-- **Multi-session support** — register one bot with multiple WeChat accounts via `login(name="...")`; `recv()` polls all sessions concurrently, `send()` auto-routes to the correct session
-- **CDN pre-upload API** — `upload()` uploads media to CDN without sending, returns reusable `UploadedMedia` reference
-- **`send()` accepts `UploadedMedia`** for sending pre-uploaded media without re-uploading
-- **`auto_recv` on `send()`** — refresh context tokens before sending; returns `SendResult` (bool-compatible) with any messages received during auto-recv; MCP server enables this by default
-- **Quoted message support** — `Message.ref_msg` field exposes the referenced (quoted) message when a user replies to a previous message
-- **OpenAPI server** — expose bot tools as REST API endpoints via `weilink openapi` subcommand
-- **Web admin panel** — browser UI for session management, QR login, and status monitoring
-- **MCP multi-transport** — support `stdio`, `sse`, and `streamable-http` transports
-- **Docker deployment** — container image with MCP SSE + admin panel, `docker-compose.yaml` included
-- **Unified CLI** — single `weilink` command with `admin`, `mcp`, and `openapi` subcommands
-- `--admin-port` flag on `weilink mcp` to run admin panel and MCP server in one process
-- Startup banner with PyPI version check (`--no-banner` to suppress)
-- `get_updates()` now accepts a `timeout` parameter
-- Add `MediaContent` type alias for cleaner media parameter annotations
+- **Multi-session support** ([`7dbb23d`](https://github.com/Oaklight/weilink/commit/7dbb23d)) — register one bot with multiple WeChat accounts via `login(name="...")`; `recv()` polls all sessions concurrently, `send()` auto-routes to the correct session
+- **CDN pre-upload** ([`20f660e`](https://github.com/Oaklight/weilink/commit/20f660e)) — `upload()` pre-uploads media to CDN, returns reusable `UploadedMedia` reference; `send()` accepts it to avoid re-uploading
+- **`auto_recv` on `send()`** ([#4](https://github.com/Oaklight/weilink/issues/4), [`c72099a`](https://github.com/Oaklight/weilink/commit/c72099a)) — optionally refresh context tokens before sending; returns `SendResult` (bool-compatible) carrying any messages received during the refresh
+- **Quoted message support** ([#3](https://github.com/Oaklight/weilink/issues/3), [`c984f72`](https://github.com/Oaklight/weilink/commit/c984f72)) — `Message.ref_msg` exposes the referenced message when a user replies to a previous message
+- **MCP server** ([`837997f`](https://github.com/Oaklight/weilink/commit/837997f)) — `stdio`, `sse`, and `streamable-http` transports; `--admin-port` flag to co-host admin panel
+- **OpenAPI server** ([`e40c126`](https://github.com/Oaklight/weilink/commit/e40c126)) — expose bot tools as REST API endpoints via `weilink openapi`
+- **Web admin panel** ([`c65a28a`](https://github.com/Oaklight/weilink/commit/c65a28a)) — browser UI for session management, QR login, and status monitoring
+- **Docker deployment** ([`e1450dd`](https://github.com/Oaklight/weilink/commit/e1450dd)) — container image with MCP SSE + admin panel, `docker-compose.yaml` included
+- **Unified CLI** ([`9a48774`](https://github.com/Oaklight/weilink/commit/9a48774)) — single `weilink` command with `admin`, `mcp`, and `openapi` subcommands
 
 ### Bug Fixes
 
-- Fix `recv()` crash on Python 3.10 when multiple sessions are active (`concurrent.futures.TimeoutError` was not caught)
+- Fix `recv()` crash on Python 3.10 when multiple sessions are active ([`4625f34`](https://github.com/Oaklight/weilink/commit/4625f34))
 
 ## v0.2.0 (2026-03-24)
 
