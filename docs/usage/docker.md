@@ -1,20 +1,23 @@
 # Docker Deployment
 
-WeiLink provides a standalone admin panel server (`weilink-admin`) that can run as a long-lived process, making it ideal for Docker deployment.
+The WeiLink Docker image bundles both the **MCP server** (for AI agent integration) and the **admin panel** (web UI for session management) in a single container.
 
-## Standalone CLI
+## Unified CLI
 
-The `weilink-admin` command starts an HTTP admin panel for managing bot sessions via a web browser.
+The `weilink` command provides two subcommands:
 
 ```bash
-# Default profile (~/.weilink/)
-weilink-admin --host 0.0.0.0 --port 8080
+# Admin panel only
+weilink admin --host 0.0.0.0 -p 8080
 
-# Custom profile
-weilink-admin -d /path/to/profile -p 9090
+# MCP server (stdio, for AI agents)
+weilink mcp
+
+# MCP server (SSE) + admin panel in one process
+weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
 ```
 
-### CLI Options
+### `weilink admin` Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -23,13 +26,24 @@ weilink-admin -d /path/to/profile -p 9090
 | `-d, --base-path` | Data directory (profile path) | `~/.weilink/` |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 
+### `weilink mcp` Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --transport` | MCP transport (`stdio`, `sse`, `streamable-http`) | `stdio` |
+| `--host` | Host address for SSE/streamable-http | `127.0.0.1` |
+| `-p, --port` | Port for SSE/streamable-http | `8000` |
+| `-d, --base-path` | Data directory (profile path) | `~/.weilink/` |
+| `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
+| `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+
 ### Multiple Profiles
 
 Run multiple instances with different profiles to manage separate bot accounts:
 
 ```bash
-weilink-admin -d ~/.weilink/personal -p 8080 &
-weilink-admin -d ~/.weilink/work     -p 8081 &
+weilink admin -d ~/.weilink/personal -p 8080 &
+weilink admin -d ~/.weilink/work     -p 8081 &
 ```
 
 Each profile maintains its own `token.json` and session data independently.
@@ -39,10 +53,19 @@ Each profile maintains its own `token.json` and session data independently.
 ### Quick Start
 
 ```bash
-docker run -p 8080:8080 -v weilink-data:/data/weilink oaklight/weilink-admin
+docker run -p 8000:8000 -p 8080:8080 -v weilink-data:/data/weilink oaklight/weilink
 ```
 
-Open `http://localhost:8080` in your browser to access the admin panel.
+This starts both the MCP SSE server on port 8000 and the admin panel on port 8080. Open `http://localhost:8080` in your browser to manage sessions.
+
+### Admin Panel Only
+
+To run only the admin panel without the MCP server:
+
+```bash
+docker run -p 8080:8080 -v weilink-data:/data/weilink oaklight/weilink \
+    weilink admin --host 0.0.0.0 -p 8080 -d /data/weilink
+```
 
 ### Multiple Profiles with Docker
 
@@ -51,25 +74,26 @@ Use different Docker volumes to isolate profiles:
 ```bash
 # Personal bot
 docker run -d --name weilink-personal \
-    -p 8080:8080 \
+    -p 8000:8000 -p 8080:8080 \
     -v weilink-personal:/data/weilink \
-    oaklight/weilink-admin
+    oaklight/weilink
 
 # Work bot
 docker run -d --name weilink-work \
-    -p 8081:8080 \
+    -p 8001:8000 -p 8081:8080 \
     -v weilink-work:/data/weilink \
-    oaklight/weilink-admin
+    oaklight/weilink
 ```
 
 ### Docker Compose
 
 ```yaml
 services:
-  weilink-admin:
-    image: oaklight/weilink-admin
+  weilink:
+    image: oaklight/weilink
     ports:
-      - "8080:8080"
+      - "8000:8000"  # MCP SSE
+      - "8080:8080"  # Admin panel
     volumes:
       - weilink-data:/data/weilink
     restart: unless-stopped
@@ -83,16 +107,18 @@ For multiple profiles:
 ```yaml
 services:
   bot-personal:
-    image: oaklight/weilink-admin
+    image: oaklight/weilink
     ports:
+      - "8000:8000"
       - "8080:8080"
     volumes:
       - personal-data:/data/weilink
     restart: unless-stopped
 
   bot-work:
-    image: oaklight/weilink-admin
+    image: oaklight/weilink
     ports:
+      - "8001:8000"
       - "8081:8080"
     volumes:
       - work-data:/data/weilink
@@ -106,14 +132,13 @@ volumes:
 ### Building the Image
 
 ```bash
-cd docker/
-make build
+make build-docker
 
 # With PyPI mirror
-make build PYPI_MIRROR=https://pypi.tuna.tsinghua.edu.cn/simple
+make build-docker PYPI_MIRROR=https://pypi.tuna.tsinghua.edu.cn/simple
 
 # With registry mirror
-make build REGISTRY_MIRROR=docker.1ms.run
+make build-docker REGISTRY_MIRROR=docker.1ms.run
 ```
 
 ### Data Persistence

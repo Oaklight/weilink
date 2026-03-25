@@ -1,7 +1,13 @@
 # Changelog
 
-## v0.3.0b2 (2026-03-25)
+## Unreleased
 
+- Unified CLI — single `weilink` command with `admin` and `mcp` subcommands
+- MCP multi-transport — support `stdio`, `sse`, and `streamable-http` transports
+- Web admin panel — browser UI for session management, QR login, and status monitoring
+- Docker deployment — container image with MCP SSE + admin panel, `docker-compose.yaml` included
+- `--admin-port` flag on `weilink mcp` to run admin panel and MCP server in one process
+- Startup banner with PyPI version check (`--no-banner` to suppress)
 - Multi-session support — register one bot with multiple WeChat accounts via `login(name="...")`; `recv()` polls all sessions concurrently, `send()` auto-routes to the correct session
 - CDN pre-upload API — `upload()` uploads media to CDN without sending, returns reusable `UploadedMedia` reference
 - `send()` now accepts `UploadedMedia` for sending pre-uploaded media without re-uploading
