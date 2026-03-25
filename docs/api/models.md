@@ -1,13 +1,21 @@
 # 数据模型
 
-## BotInfo
-
-::: weilink.BotInfo
-
-## Message
+::: weilink.MessageType
 
 ::: weilink.Message
 
-## MessageType
+::: weilink.BotInfo
 
-::: weilink.MessageType
+::: weilink.MediaInfo
+
+::: weilink.ImageInfo
+
+::: weilink.VoiceInfo
+
+::: weilink.VideoInfo
+
+::: weilink.FileInfo
+
+::: weilink.MediaContent
+
+::: weilink.UploadedMedia
