@@ -1,6 +1,8 @@
 """Tests for admin panel server and API handlers."""
 
 import json
+import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -38,6 +40,104 @@ class TestAdminServer:
 
     def test_stop_admin_when_not_running(self, wl):
         wl.stop_admin()  # should not raise
+
+
+class TestAdminCLI:
+    """Tests for standalone weilink-admin CLI entry point."""
+
+    def test_cli_starts_and_responds(self, tmp_path):
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "weilink.admin",
+                "--port",
+                "0",
+                "-d",
+                str(tmp_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            # Read the "running at" line to get the URL
+            assert proc.stdout is not None
+            url = None
+            for _ in range(50):
+                line = proc.stdout.readline()
+                if "running at" in line:
+                    url = line.strip().split()[-1]
+                    break
+            assert url is not None, "CLI did not print the URL"
+
+            # Verify the server is actually responding
+            req = urllib.request.Request(url + "/api/status")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read())
+            assert "version" in data
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
+
+    def test_cli_custom_base_path_printed(self, tmp_path):
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "weilink.admin",
+                "--port",
+                "0",
+                "-d",
+                str(tmp_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            assert proc.stdout is not None
+            lines = []
+            for _ in range(50):
+                line = proc.stdout.readline()
+                lines.append(line)
+                if "Data directory" in line:
+                    break
+            assert any(str(tmp_path) in ln for ln in lines)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
+
+    def test_cli_sigterm_graceful_shutdown(self, tmp_path):
+        import signal
+
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "weilink.admin",
+                "--port",
+                "0",
+                "-d",
+                str(tmp_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        # Wait for startup
+        assert proc.stdout is not None
+        for _ in range(50):
+            line = proc.stdout.readline()
+            if "running at" in line:
+                break
+
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+        assert proc.returncode is not None
 
 
 class TestAdminAPI:

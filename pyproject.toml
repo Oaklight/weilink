@@ -39,6 +39,7 @@ mcp = [
 ]
 
 [project.scripts]
+weilink-admin = "weilink.admin.__main__:main"
 weilink-mcp = "weilink.mcp:main"
 
 [project.urls]
