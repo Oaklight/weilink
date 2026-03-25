@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.0 (2026-03-25)
 
 - Fix `recv()` crash on Python 3.10 when multiple sessions are active (`concurrent.futures.TimeoutError` was not caught)
 - OpenAPI server — expose bot tools as REST API endpoints via `weilink openapi` subcommand
@@ -15,6 +15,7 @@
 - CDN pre-upload API — `upload()` uploads media to CDN without sending, returns reusable `UploadedMedia` reference
 - `send()` now accepts `UploadedMedia` for sending pre-uploaded media without re-uploading
 - Add `MediaContent` type alias for cleaner media parameter annotations
+- `send()` now accepts `auto_recv` parameter to refresh context tokens before sending and returns `SendResult` (bool-compatible) with any messages received during auto-recv; MCP server enables this by default
 
 ## v0.2.0 (2026-03-24)
 

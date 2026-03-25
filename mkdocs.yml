@@ -82,6 +82,7 @@ nav:
   - Usage:
       - Installation: usage/installation.md
       - Quick Start: usage/quickstart.md
+      - Core Concepts: usage/concepts.md
       - Multi-Session: usage/multi_session.md
       - MCP Server: usage/mcp.md
       - OpenAPI Server: usage/openapi.md

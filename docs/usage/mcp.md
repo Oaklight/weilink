@@ -26,10 +26,7 @@ WeiLink MCP server supports three transports: **stdio** (default), **SSE**, and 
 ### stdio (default)
 
 ```bash
-# CLI entry point
-weilink-mcp
-
-# Or via unified CLI
+# Via unified CLI
 weilink mcp
 
 # Or via Python module
@@ -76,7 +73,8 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "weilink": {
-      "command": "weilink-mcp"
+      "command": "weilink",
+      "args": ["mcp"]
     }
   }
 }
@@ -85,7 +83,7 @@ Add to `claude_desktop_config.json`:
 ### Claude Code (stdio)
 
 ```bash
-claude mcp add weilink weilink-mcp
+claude mcp add weilink -- weilink mcp
 ```
 
 ### Claude Code (HTTP)
@@ -153,6 +151,9 @@ Send text and/or media to a WeChat user.
 | `video_path` | str | `""` | Local video file path |
 | `voice_path` | str | `""` | Local voice file path |
 
+!!! note "Auto-recv"
+    The MCP server automatically calls `recv()` before each send to refresh context tokens. This ensures the bot has a valid token even if `recv_messages` hasn't been called recently.
+
 ### `download_media`
 
 Download media from a previously received message.
@@ -182,7 +183,7 @@ Two-step login flow for QR code authentication:
 
 ```mermaid
 graph LR
-    A[AI Agent] -->|MCP protocol| B[weilink-mcp]
+    A[AI Agent] -->|MCP protocol| B[WeiLink MCP]
     B -->|WeiLink SDK| C[iLink API]
     C --> D[WeChat]
 ```

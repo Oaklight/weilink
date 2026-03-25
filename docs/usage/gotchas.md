@@ -17,6 +17,10 @@ Practical tips and tricky parts discovered during development of the WeChat iLin
 - **Video preview errors** — Re-uploading a downloaded video to CDN may fail with "probe preview error". Direct uploads from local files work fine.
 - **Image AES key quirk** — For received images, the correct decryption key is in `image_item.aeskey` (raw hex), NOT `media.aes_key` (base64). The SDK handles this automatically.
 
+## Message Delivery
+
+- **Batch delayed delivery** — Occasionally, `send()` returns success but messages arrive at the user's WeChat several minutes later in a batch. This is a WeChat / iLink server-side behavior, not an SDK bug. Under investigation ([#2](https://github.com/Oaklight/weilink/issues/2)).
+
 ## Context Tokens
 
 - **Tokens are per-user, not per-session** — Each user has their own context_token. Old tokens remain valid within the 24h window even after newer tokens are issued.
