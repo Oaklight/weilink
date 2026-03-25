@@ -1,3 +1,8 @@
+---
+hide:
+  - navigation
+---
+
 # WeiLink
 
 [![PyPI version](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
