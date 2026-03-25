@@ -34,6 +34,12 @@ test = [
     "pytest-cov>=4.0.0",
     "coverage>=7.0.0",
 ]
+mcp = [
+    "mcp>=1.8.0",
+]
+
+[project.scripts]
+weilink-mcp = "weilink.mcp:main"
 
 [project.urls]
 Documentation = "https://weilink.readthedocs.io"
@@ -65,6 +71,12 @@ include = ["src/weilink/_qr.py"]
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"
 invalid-return-type = "ignore"
+
+[[tool.ty.overrides]]
+include = ["tests/"]
+
+[tool.ty.overrides.rules]
+invalid-assignment = "ignore"
 
 [tool.setuptools.dynamic]
 version = { attr = "weilink.__version__" }

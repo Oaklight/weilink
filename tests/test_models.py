@@ -26,7 +26,7 @@ class TestBotInfo:
     def test_frozen(self):
         info = BotInfo(bot_id="abc@im.bot", base_url="https://example.com", token="tok")
         try:
-            info.bot_id = "other"  # type: ignore[misc]
+            info.bot_id = "other"
             assert False, "Should not allow mutation"
         except AttributeError:
             pass
@@ -59,7 +59,7 @@ class TestMessage:
     def test_frozen(self):
         msg = Message(from_user="user@im.wechat")
         try:
-            msg.text = "modified"  # type: ignore[misc]
+            msg.text = "modified"
             assert False, "Should not allow mutation"
         except AttributeError:
             pass

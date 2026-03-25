@@ -431,7 +431,7 @@ class TestUploadAndReuse:
             cipher_size=112,
         )
         try:
-            ref.filekey = "xyz"  # type: ignore[misc]
+            ref.filekey = "xyz"
             assert False, "Should raise FrozenInstanceError"
         except AttributeError:
             pass

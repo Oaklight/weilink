@@ -32,7 +32,11 @@ try:
                 f"{msg.text or f'<{msg.msg_type.name}>'}"
             )
             # Echo back
-            reply = f"[echo] {msg.text}" if msg.text else f"[echo] received {msg.msg_type.name}"
+            reply = (
+                f"[echo] {msg.text}"
+                if msg.text
+                else f"[echo] received {msg.msg_type.name}"
+            )
             ok = wl.send(msg.from_user, reply)
             print(f"  -> reply {'OK' if ok else 'FAILED'}")
 
