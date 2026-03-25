@@ -25,14 +25,18 @@
     "connected": "Connected",
     "not_connected": "Not Connected",
     "show_users": "Show Users",
-    "hide_users": "Hide Users"
+    "hide_users": "Hide Users",
+    "default_badge": "Default"
   },
   "users": {
     "user_id": "User ID",
     "last_interaction": "Last Interaction",
     "fresh": "Active",
     "expired": "Expired",
-    "no_users": "No users in this session"
+    "no_users": "No users in this session",
+    "first_seen": "Registered",
+    "last_received": "Last Received",
+    "last_sent": "Last Sent"
   },
   "login": {
     "new_login": "New Login",
@@ -46,11 +50,13 @@
     "confirmed": "Login successful!",
     "expired": "QR code expired",
     "refresh_qr": "Refresh QR Code",
-    "error": "Login failed"
+    "error": "Login failed",
+    "relogin_hint": "Enter an existing session name to force re-login."
   },
   "actions": {
     "logout": "Logout",
     "rename": "Rename",
+    "set_default": "Set Default",
     "confirm_logout": "Logout session \"{{name}}\"?",
     "rename_prompt": "New name for session \"{{name}}\":",
     "success": "Success",

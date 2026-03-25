@@ -230,6 +230,43 @@ class TestAdminAPI:
         except urllib.error.HTTPError as e:
             assert e.code == 404
 
+    def test_api_sessions_has_is_default(self):
+        data = self._get("/api/sessions")
+        session = data["sessions"][0]
+        assert "is_default" in session
+        assert session["is_default"] is True
+
+    def test_api_set_default(self, tmp_path):
+        from weilink.client import _Session
+        from weilink.models import BotInfo
+
+        s2 = _Session(
+            name="zb",
+            token_path=tmp_path / "zb" / "token.json",
+            bot_info=BotInfo(
+                bot_id="zb@im.bot",
+                base_url="https://example.com",
+                token="tok_zb",
+            ),
+        )
+        self.wl._sessions["zb"] = s2
+
+        data = self._post("/api/set-default", {"name": "zb"})
+        assert data["success"] is True
+        assert self.wl.bot_id == "zb@im.bot"
+
+    def test_api_set_default_nonexistent(self):
+        try:
+            self._post("/api/set-default", {"name": "nope"})
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+
+    def test_api_set_default_missing_name(self):
+        try:
+            self._post("/api/set-default", {})
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+
     def test_not_found(self):
         try:
             self._get("/api/nonexistent")

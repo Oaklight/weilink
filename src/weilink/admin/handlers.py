@@ -92,6 +92,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
 
         if path == "/api/sessions/login":
             self._handle_start_login(body)
+        elif path == "/api/set-default":
+            self._handle_set_default(body)
         elif path.endswith("/logout"):
             name = path[len("/api/sessions/") : -len("/logout")]
             self._handle_logout(urllib.parse.unquote(name))
@@ -146,6 +148,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                         "user_id": user_id,
                         "last_interaction": ts,
                         "fresh": (now - ts) < expiry if ts > 0 else False,
+                        "last_sent": s.send_timestamps.get(user_id, 0.0),
+                        "first_seen": s.user_first_seen.get(user_id, 0.0),
                     }
                 )
             sessions.append(
@@ -153,6 +157,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                     "name": name,
                     "bot_id": s.bot_info.bot_id if s.bot_info else None,
                     "connected": s.bot_info is not None,
+                    "is_default": s is wl._default_session,
+                    "created_at": s.created_at,
                     "user_count": len(users),
                     "users": users,
                 }
@@ -313,6 +319,31 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             )
         except ValueError as e:
             self._send_error(400, str(e))
+
+    def _handle_set_default(self, body: bytes) -> None:
+        """Set a session as the default."""
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            self._send_error(400, "Invalid JSON body")
+            return
+
+        name = data.get("name", "").strip()
+        if not name:
+            self._send_error(400, "name is required")
+            return
+
+        try:
+            with self._lock:
+                self.weilink.set_default(name)
+            self._send_json(
+                {
+                    "success": True,
+                    "message": f"Default session set to {name!r}",
+                }
+            )
+        except ValueError as e:
+            self._send_error(404, str(e))
 
     def _handle_locale(self, lang: str) -> None:
         """Serve a locale JSON file."""

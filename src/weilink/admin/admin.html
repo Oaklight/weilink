@@ -208,7 +208,7 @@ table {
   border-collapse: collapse;
 }
 th {
-  text-align: left;
+  text-align: center;
   padding: 10px 16px;
   font-size: 12px;
   font-weight: 600;
@@ -216,13 +216,19 @@ th {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   border-bottom: 1px solid var(--border);
+  border-right: 1px solid rgba(0,0,0,0.04);
   background: var(--bg-primary);
 }
+th:last-child { border-right: none; }
 td {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
+  border-right: 1px solid rgba(0,0,0,0.04);
   font-size: 14px;
+  vertical-align: middle;
+  text-align: center;
 }
+td:last-child { border-right: none; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: var(--bg-hover); }
 
@@ -238,11 +244,23 @@ tr:hover td { background: var(--bg-hover); }
 .badge-danger { background: rgba(220,53,69,0.1); color: var(--danger); }
 .badge-warning { background: rgba(255,193,7,0.1); color: #856404; }
 
+/* Clickable user ID */
+.user-link {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--border);
+  text-underline-offset: 2px;
+  transition: text-decoration-color 0.15s, color 0.15s;
+}
+.user-link:hover {
+  text-decoration-color: var(--accent);
+  color: var(--accent);
+}
+
 /* User detail rows */
 .user-row td {
-  padding: 8px 16px 8px 40px;
+  padding: 4px 16px;
   background: var(--bg-primary);
-  font-size: 13px;
 }
 
 /* Empty state */
@@ -306,6 +324,12 @@ tr:hover td { background: var(--bg-hover); }
   box-shadow: 0 0 0 2px var(--accent-light);
 }
 
+.form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 /* QR Code display */
 .qr-container {
   text-align: center;
@@ -349,6 +373,32 @@ tr:hover td { background: var(--bg-hover); }
   to { opacity: 1; transform: translateX(0); }
 }
 
+/* Dropdown */
+.dropdown {
+  position: relative;
+  display: inline-block;
+}
+.dropdown-menu {
+  display: none;
+  position: fixed;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  min-width: 140px;
+  z-index: 999;
+  overflow: hidden;
+}
+.dropdown-menu.open { display: block; }
+.dropdown-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.dropdown-item:hover { background: var(--bg-hover); }
+
 /* Responsive */
 @media (max-width: 768px) {
   .main { padding: 16px; }
@@ -368,13 +418,13 @@ tr:hover td { background: var(--bg-hover); }
     </div>
     <div class="header-links">
       <a href="https://github.com/Oaklight/weilink" target="_blank" rel="noopener" title="GitHub">
-        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
       </a>
       <a href="https://weilink.readthedocs.io" target="_blank" rel="noopener" title="Docs">
-        <svg viewBox="0 0 24 24"><path d="M21 4H3a1 1 0 00-1 1v14a1 1 0 001 1h18a1 1 0 001-1V5a1 1 0 00-1-1zM5 18V6h6v12H5zm14 0h-6V6h6v12z"/><path d="M7 8h2v2H7zm0 3h2v2H7zm0 3h2v2H7zm8-6h2v2h-2zm0 3h2v2h-2zm0 3h2v2h-2z"/></svg>
+        <svg viewBox="0 0 24 24"><path d="M5.039 0C3.37 0 2.033 1.338 2.033 2.999v18.005c0 1.66 1.337 2.996 3.006 2.996h13.922c1.66 0 3.006-1.337 3.006-2.996V7.498L14.48 0H5.039zm8.567 1.5L20.467 8.5h-4.86c-1.106 0-2.001-.9-2.001-2V1.5zM7.04 11h9.92v1.5H7.04V11zm0 3.5h9.92V16H7.04v-1.5zm0 3.5h6.5v1.5h-6.5V18z"/></svg>
       </a>
       <a href="https://hub.docker.com/r/oaklight/weilink" target="_blank" rel="noopener" title="Docker Hub">
-        <svg viewBox="0 0 24 24"><path d="M13.98 11.08h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19v1.88c0 .1.08.19.18.19zm-2.95 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.19.19v1.88c0 .1.09.19.19.19zm-2.93 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19H8.1a.19.19 0 00-.19.19v1.88c0 .1.09.19.19.19zm-2.96 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19H5.15a.19.19 0 00-.19.19v1.88c0 .1.08.19.19.19zm5.89-2.8h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19V8.1c0 .1.08.18.18.18zm-2.93 0h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.19.19V8.1c0 .1.09.18.19.18zm-2.96 0h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19H5.15a.19.19 0 00-.19.19V8.1c0 .1.08.18.19.18zm5.89-2.8h2.12a.19.19 0 00.19-.19V3.41a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19v1.88c0 .1.08.19.18.19zm2.95 2.8h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19V8.1c0 .1.08.18.18.18zm4.36 1.56c-.67-.35-1.42-.49-2.14-.44-.22-1.09-.88-2.03-1.73-2.63l-.35-.24-.26.33c-.34.42-.58.9-.71 1.41-.09.34-.13.7-.11 1.06-1.03-.36-2.19-.55-3.28-.48H.96l-.05.41c-.14 1.07.04 2.15.5 3.12.54 1.14 1.39 1.99 2.53 2.53.96.46 2.45.75 3.74.75 1.41-.01 2.8-.23 4.1-.67.98-.34 1.88-.82 2.67-1.44.86-.67 1.59-1.47 2.19-2.38.6.01 1.93.01 2.6-1.28l.05-.09-.32-.17z"/></svg>
+        <svg viewBox="0 2.5 24 16"><path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.12a.185.185 0 00-.185.185v1.888c0 .102.083.185.186.185zm-2.954 0h2.118a.186.186 0 00.187-.185V9.006a.186.186 0 00-.187-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.185zm-2.93 0h2.12a.186.186 0 00.184-.185V9.006a.186.186 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.185zm-2.964 0h2.12a.186.186 0 00.184-.185V9.006a.186.186 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zm5.893-2.795h2.118a.186.186 0 00.187-.186V6.21a.186.186 0 00-.187-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.185.185.186zm-2.93 0h2.12a.186.186 0 00.184-.186V6.21a.186.186 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.185.185.186zm-2.964 0h2.12a.186.186 0 00.184-.186V6.21a.186.186 0 00-.184-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.186zm5.893-2.795h2.118a.186.186 0 00.187-.185V3.41a.186.186 0 00-.187-.186h-2.118a.185.185 0 00-.185.185v1.888c0 .102.082.186.185.186zm2.93 2.795h2.12a.186.186 0 00.184-.186V6.21a.186.186 0 00-.184-.186h-2.12a.185.185 0 00-.184.185v1.888c0 .102.083.186.185.186zM22 12.396c-.67-.346-1.427-.49-2.15-.441-.222-1.092-.878-2.032-1.728-2.625l-.345-.24-.257.334c-.334.42-.577.9-.704 1.408-.093.34-.13.7-.111 1.062-1.03-.36-2.19-.553-3.285-.481H.937l-.052.413c-.14 1.07.043 2.15.505 3.12.536 1.14 1.387 1.986 2.532 2.525.96.46 2.445.746 3.733.746 1.408-.01 2.796-.234 4.103-.668.98-.34 1.883-.82 2.673-1.44.86-.67 1.593-1.47 2.187-2.375.601.01 1.927.01 2.596-1.285l.049-.09-.316-.17z"/></svg>
       </a>
     </div>
   </div>
@@ -398,10 +448,6 @@ tr:hover td { background: var(--bg-hover); }
     <div class="status-card">
       <div class="status-card-label" data-i18n="status.connected_sessions">Connected</div>
       <div class="status-card-value" id="statConnected">0</div>
-    </div>
-    <div class="status-card">
-      <div class="status-card-label" data-i18n="status.total_users">Total Users</div>
-      <div class="status-card-value" id="statTotalUsers">0</div>
     </div>
     <div class="status-card">
       <div class="status-card-label" data-i18n="status.active_users">Active Users</div>
@@ -446,6 +492,7 @@ tr:hover td { background: var(--bg-hover); }
           <input class="form-input" id="loginNameInput" type="text"
                  data-i18n-placeholder="login.session_name_placeholder"
                  placeholder="Enter session name (leave empty for default)">
+          <div class="form-hint" data-i18n="login.relogin_hint">Enter an existing session name to force re-login.</div>
         </div>
       </div>
       <!-- Step 2: QR code display -->
@@ -583,6 +630,13 @@ class WeiLinkAPI {
     return this.request(`/api/sessions/${encodeURIComponent(name)}/logout`, { method: 'POST' });
   }
 
+  async setDefault(name) {
+    return this.request('/api/set-default', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  }
+
   async rename(name, newName) {
     return this.request(`/api/sessions/${encodeURIComponent(name)}/rename`, {
       method: 'POST',
@@ -628,14 +682,12 @@ function renderSessions(data) {
   empty.style.display = 'none';
 
   // Stats
-  let totalUsers = 0, activeUsers = 0;
+  let activeUsers = 0;
   sessions.forEach(s => {
-    totalUsers += s.user_count;
     s.users.forEach(u => { if (u.fresh) activeUsers++; });
   });
   document.getElementById('statTotalSessions').textContent = sessions.length;
   document.getElementById('statConnected').textContent = sessions.filter(s => s.connected).length;
-  document.getElementById('statTotalUsers').textContent = totalUsers;
   document.getElementById('statActiveUsers').textContent = activeUsers;
 
   let html = '';
@@ -644,35 +696,56 @@ function renderSessions(data) {
       ? `<span class="badge badge-success" data-i18n="sessions.connected">${i18n.t('sessions.connected')}</span>`
       : `<span class="badge badge-danger" data-i18n="sessions.not_connected">${i18n.t('sessions.not_connected')}</span>`;
 
-    const expandBtn = s.user_count > 0
-      ? `<button class="btn btn-secondary" onclick="toggleUsers('${s.name}')" data-i18n="sessions.show_users">${i18n.t('sessions.show_users')}</button>`
+    let userCell = '—';
+    if (s.users.length > 0) {
+      const u = s.users[0];
+      const freshBadge = u.fresh
+        ? `<span class="badge badge-success">${i18n.t('users.fresh')}</span>`
+        : `<span class="badge badge-warning">${i18n.t('users.expired')}</span>`;
+      userCell = `<span class="user-link" style="font-family:monospace;font-size:12px" onclick="toggleUsers('${s.name}')">${escapeHtml(u.user_id)}</span> ${freshBadge}`;
+    }
+
+    const defaultBadge = s.is_default
+      ? ` <span class="badge badge-success" data-i18n="sessions.default_badge">${i18n.t('sessions.default_badge')}</span>`
       : '';
 
-    const actions = [];
+    let actionsHtml = '';
     if (s.connected) {
-      actions.push(`<button class="btn btn-secondary" onclick="renameSession('${s.name}')" data-i18n="actions.rename">${i18n.t('actions.rename')}</button>`);
-      actions.push(`<button class="btn btn-danger" onclick="logoutSession('${s.name}')" data-i18n="actions.logout">${i18n.t('actions.logout')}</button>`);
+      const menuItems = [];
+      if (!s.is_default) {
+        menuItems.push(`<div class="dropdown-item" onclick="setDefaultSession('${s.name}')" data-i18n="actions.set_default">${i18n.t('actions.set_default')}</div>`);
+      }
+      menuItems.push(`<div class="dropdown-item" onclick="renameSession('${s.name}')" data-i18n="actions.rename">${i18n.t('actions.rename')}</div>`);
+
+      const menu = menuItems.length > 0
+        ? `<div class="dropdown">
+            <button class="btn btn-icon" onclick="toggleDropdown(event, this)">&#8942;</button>
+            <div class="dropdown-menu">${menuItems.join('')}</div>
+          </div>`
+        : '';
+
+      actionsHtml = `<button class="btn btn-danger" onclick="logoutSession('${s.name}')" data-i18n="actions.logout">${i18n.t('actions.logout')}</button> ${menu}`;
     }
 
     html += `<tr id="session-row-${s.name}">
-      <td><strong>${escapeHtml(s.name)}</strong></td>
+      <td><strong>${escapeHtml(s.name)}</strong>${defaultBadge}</td>
       <td style="font-family:monospace;font-size:12px">${s.bot_id || '—'}</td>
       <td>${statusBadge}</td>
-      <td>${s.user_count} ${expandBtn}</td>
-      <td>${actions.join(' ')}</td>
+      <td>${userCell}</td>
+      <td>${actionsHtml}</td>
     </tr>`;
 
     // User detail rows (hidden by default)
     if (s.users.length > 0) {
       s.users.forEach(u => {
-        const freshBadge = u.fresh
-          ? `<span class="badge badge-success">${i18n.t('users.fresh')}</span>`
-          : `<span class="badge badge-warning">${i18n.t('users.expired')}</span>`;
         html += `<tr class="user-row user-rows-${s.name}" style="display:none">
-          <td colspan="2" style="font-family:monospace;font-size:12px">${escapeHtml(u.user_id)}</td>
-          <td>${freshBadge}</td>
-          <td>${formatTime(u.last_interaction)}</td>
-          <td></td>
+          <td colspan="5">
+            <div style="padding:4px 0 4px 16px;font-size:13px;color:var(--text-secondary);display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+              <div><strong>${i18n.t('users.first_seen')}:</strong> ${formatTime(u.first_seen)}</div>
+              <div><strong>${i18n.t('users.last_received')}:</strong> ${formatTime(u.last_interaction)}</div>
+              <div><strong>${i18n.t('users.last_sent')}:</strong> ${formatTime(u.last_sent)}</div>
+            </div>
+          </td>
         </tr>`;
       });
     }
@@ -704,9 +777,11 @@ async function refreshAll() {
     if (status.is_connected) {
       dot.className = 'status-dot connected';
       text.textContent = i18n.t('header.connected');
+      text.setAttribute('data-i18n', 'header.connected');
     } else {
       dot.className = 'status-dot disconnected';
       text.textContent = i18n.t('header.disconnected');
+      text.setAttribute('data-i18n', 'header.disconnected');
     }
     renderSessions(sessions);
   } catch (e) {
@@ -729,6 +804,15 @@ async function renameSession(name) {
   if (!newName || !newName.trim()) return;
   try {
     const resp = await api.rename(name, newName.trim());
+    if (resp.error) { showToast(resp.error, true); return; }
+    showToast(resp.message);
+    refreshAll();
+  } catch (e) { showToast(e.message, true); }
+}
+
+async function setDefaultSession(name) {
+  try {
+    const resp = await api.setDefault(name);
     if (resp.error) { showToast(resp.error, true); return; }
     showToast(resp.message);
     refreshAll();
@@ -824,6 +908,37 @@ async function refreshQR() {
     pollInterval = setInterval(() => pollLogin(), 2000);
   } catch (e) { showToast(e.message, true); }
 }
+
+// ============================================================
+// Dropdown
+// ============================================================
+function toggleDropdown(event, btn) {
+  event.stopPropagation();
+  const menu = btn.nextElementSibling;
+  const wasOpen = menu.classList.contains('open');
+  // Close all other open dropdowns
+  document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  if (!wasOpen) {
+    const rect = btn.getBoundingClientRect();
+    // Show off-screen first to measure width
+    menu.style.visibility = 'hidden';
+    menu.classList.add('open');
+    const menuW = menu.offsetWidth;
+    const menuH = menu.offsetHeight;
+    // Position below button, right-aligned
+    menu.style.top = (rect.bottom + 4) + 'px';
+    menu.style.left = Math.max(0, rect.right - menuW) + 'px';
+    // Flip above if overflows viewport
+    if (rect.bottom + 4 + menuH > window.innerHeight) {
+      menu.style.top = (rect.top - menuH - 4) + 'px';
+    }
+    menu.style.visibility = '';
+  }
+}
+
+document.addEventListener('click', () => {
+  document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+});
 
 // ============================================================
 // Toast
