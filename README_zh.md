@@ -62,6 +62,17 @@ send()   →  回复消息（自动关联 context_token）
 - **24 小时窗口** — 用户超过 24 小时未发消息，bot 的消息会被丢弃
 - **腾讯可随时终止服务** — 不建议将核心业务完全依赖此协议
 
+## 管理面板
+
+内置 Web UI，支持会话管理、扫码登录和状态监控：
+
+```bash
+pip install weilink[server]
+weilink admin -p 8080
+```
+
+![管理面板](https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_panel.png)
+
 ## API
 
 | 方法 | 说明 |

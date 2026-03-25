@@ -62,6 +62,17 @@ send()   →  Reply to a user (context_token auto-attached)
 - **24-hour window** — Messages from the bot are discarded if the user hasn't sent anything in 24 hours
 - **Service may be terminated** — Tencent can discontinue the iLink API at any time
 
+## Admin Panel
+
+A built-in web UI for session management, QR login, and status monitoring:
+
+```bash
+pip install weilink[server]
+weilink admin -p 8080
+```
+
+![Admin Panel](https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_panel.png)
+
 ## API
 
 | Method | Description |
