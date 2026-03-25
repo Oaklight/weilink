@@ -91,7 +91,12 @@ nav:
   - 架构: architecture.md
   - API 参考:
       - WeiLink: api/client.md
+      - Session: api/session.md
       - 数据模型: api/models.md
   - 示例:
-      - 回声机器人: examples/echo_bot.md
+      - 简单回声: examples/simple_echo.md
+      - AI 回声机器人: examples/echo_bot.md
+      - 多媒体回声: examples/media_echo.md
+      - 多会话回声: examples/multi_echo.md
+      - 主动发消息: examples/proactive.md
   - 更新日志: changelog.md
