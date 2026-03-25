@@ -13,7 +13,7 @@ hide:
 
 ## 特性
 
-- **依赖精简** — 仅需 `pycryptodome` 用于 AES 媒体加密
+- **零运行时依赖** — AES 媒体加密通过 ctypes 调用 OpenSSL，纯 Python 自动兜底
 - **消息队列语义** — `login()` / `send()` / `recv()`
 - **自动状态管理** — 内部处理 `context_token` 和游标
 - **凭证持久化** — 扫码登录后自动保存 Token

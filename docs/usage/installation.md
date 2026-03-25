@@ -17,4 +17,4 @@ pip install -e .
 ## 环境要求
 
 - Python >= 3.10
-- `pycryptodome`（自动安装）
+- 无外部依赖（AES 通过 ctypes 调用 OpenSSL，纯 Python 自动兜底）
