@@ -53,6 +53,31 @@ body {
   align-items: center;
   gap: 12px;
 }
+.header-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 4px;
+}
+.header-links a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: color 0.15s, background 0.15s;
+}
+.header-links a:hover {
+  color: var(--accent);
+  background: var(--accent-light);
+}
+.header-links a svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
 .header-title {
   font-size: 18px;
   font-weight: 600;
@@ -340,6 +365,17 @@ tr:hover td { background: var(--bg-hover); }
     <div>
       <div class="header-title" data-i18n="app.title">WeiLink Admin</div>
       <div class="header-subtitle" id="versionText"></div>
+    </div>
+    <div class="header-links">
+      <a href="https://github.com/Oaklight/weilink" target="_blank" rel="noopener" title="GitHub">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+      <a href="https://weilink.readthedocs.io" target="_blank" rel="noopener" title="Docs">
+        <svg viewBox="0 0 24 24"><path d="M21 4H3a1 1 0 00-1 1v14a1 1 0 001 1h18a1 1 0 001-1V5a1 1 0 00-1-1zM5 18V6h6v12H5zm14 0h-6V6h6v12z"/><path d="M7 8h2v2H7zm0 3h2v2H7zm0 3h2v2H7zm8-6h2v2h-2zm0 3h2v2h-2zm0 3h2v2h-2z"/></svg>
+      </a>
+      <a href="https://hub.docker.com/r/oaklight/weilink" target="_blank" rel="noopener" title="Docker Hub">
+        <svg viewBox="0 0 24 24"><path d="M13.98 11.08h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19v1.88c0 .1.08.19.18.19zm-2.95 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.19.19v1.88c0 .1.09.19.19.19zm-2.93 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19H8.1a.19.19 0 00-.19.19v1.88c0 .1.09.19.19.19zm-2.96 0h2.12a.19.19 0 00.19-.19V9.01a.19.19 0 00-.19-.19H5.15a.19.19 0 00-.19.19v1.88c0 .1.08.19.19.19zm5.89-2.8h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19V8.1c0 .1.08.18.18.18zm-2.93 0h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.19.19V8.1c0 .1.09.18.19.18zm-2.96 0h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19H5.15a.19.19 0 00-.19.19V8.1c0 .1.08.18.19.18zm5.89-2.8h2.12a.19.19 0 00.19-.19V3.41a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19v1.88c0 .1.08.19.18.19zm2.95 2.8h2.12a.19.19 0 00.19-.18V6.22a.19.19 0 00-.19-.19h-2.12a.19.19 0 00-.18.19V8.1c0 .1.08.18.18.18zm4.36 1.56c-.67-.35-1.42-.49-2.14-.44-.22-1.09-.88-2.03-1.73-2.63l-.35-.24-.26.33c-.34.42-.58.9-.71 1.41-.09.34-.13.7-.11 1.06-1.03-.36-2.19-.55-3.28-.48H.96l-.05.41c-.14 1.07.04 2.15.5 3.12.54 1.14 1.39 1.99 2.53 2.53.96.46 2.45.75 3.74.75 1.41-.01 2.8-.23 4.1-.67.98-.34 1.88-.82 2.67-1.44.86-.67 1.59-1.47 2.19-2.38.6.01 1.93.01 2.6-1.28l.05-.09-.32-.17z"/></svg>
+      </a>
     </div>
   </div>
   <div class="header-right">
