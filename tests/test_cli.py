@@ -26,6 +26,7 @@ class TestCLIArgParsing:
         assert "--host" in result.stdout
         assert "--port" in result.stdout
         assert "--base-path" in result.stdout
+        assert "--no-banner" in result.stdout
 
     def test_mcp_help(self):
         result = subprocess.run(
@@ -40,6 +41,7 @@ class TestCLIArgParsing:
         assert "streamable-http" in result.stdout
         assert "http" in result.stdout
         assert "--admin-port" in result.stdout
+        assert "--no-banner" in result.stdout
 
 
 class TestCLIAdmin:
@@ -53,6 +55,7 @@ class TestCLIAdmin:
                 "-m",
                 "weilink.cli",
                 "admin",
+                "--no-banner",
                 "--port",
                 "0",
                 "-d",
@@ -90,6 +93,7 @@ class TestCLIAdmin:
                 "-u",
                 "-m",
                 "weilink.admin",
+                "--no-banner",
                 "--port",
                 "0",
                 "-d",

@@ -19,6 +19,9 @@ from typing import Any, cast
 def _run_admin(args: argparse.Namespace) -> None:
     """Start the admin panel and block until terminated."""
     from weilink import WeiLink
+    from weilink._banner import display_startup_banner
+
+    display_startup_banner(no_banner=args.no_banner)
 
     kwargs: dict[str, Any] = {}
     if args.base_path:
@@ -50,7 +53,12 @@ def _run_admin(args: argparse.Namespace) -> None:
 
 def _run_mcp(args: argparse.Namespace) -> None:
     """Start the MCP server, optionally with an admin panel."""
+    from weilink._banner import display_startup_banner
     from weilink.mcp.server import run_mcp
+
+    # Skip banner for stdio (stdout is the MCP protocol channel).
+    no_banner = args.no_banner or args.transport == "stdio"
+    display_startup_banner(no_banner=no_banner)
 
     base_path = Path(args.base_path) if args.base_path else None
 
@@ -80,9 +88,18 @@ def _run_mcp(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Unified WeiLink CLI entry point."""
+    from weilink._banner import version_check
+
     parser = argparse.ArgumentParser(
         prog="weilink",
         description="WeiLink — lightweight WeChat iLink Bot SDK CLI.",
+    )
+    parser.add_argument(
+        "--version",
+        "-V",
+        action="version",
+        version=f"%(prog)s {version_check()}",
+        help="show version and check for updates",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -114,6 +131,12 @@ def main(argv: list[str] | None = None) -> None:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="logging level (default: INFO)",
+    )
+    admin_parser.add_argument(
+        "--no-banner",
+        action="store_true",
+        default=False,
+        help="suppress the ASCII banner on startup",
     )
 
     # ── mcp subcommand ────────────────────────────────────────────
@@ -157,6 +180,12 @@ def main(argv: list[str] | None = None) -> None:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="logging level (default: INFO)",
+    )
+    mcp_parser.add_argument(
+        "--no-banner",
+        action="store_true",
+        default=False,
+        help="suppress the ASCII banner on startup",
     )
 
     args = parser.parse_args(argv)
