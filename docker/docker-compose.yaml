@@ -2,8 +2,8 @@ services:
   weilink:
     image: oaklight/weilink
     ports:
-      - "8000:8000"  # MCP SSE
-      - "8080:8080"  # Admin panel
+      - "45678:8000"  # MCP SSE
+      - "49999:8080"  # Admin panel
     volumes:
       - weilink-data:/data/weilink
     restart: unless-stopped

@@ -63,12 +63,12 @@ class TestAdminCLI:
             text=True,
         )
         try:
-            # Read the "running at" line to get the URL
+            # Read the "Admin panel:" line to get the URL
             assert proc.stdout is not None
             url = None
             for _ in range(50):
                 line = proc.stdout.readline()
-                if "running at" in line:
+                if "Admin panel:" in line:
                     url = line.strip().split()[-1]
                     break
             assert url is not None, "CLI did not print the URL"
@@ -105,7 +105,7 @@ class TestAdminCLI:
             for _ in range(50):
                 line = proc.stdout.readline()
                 lines.append(line)
-                if "Data directory" in line:
+                if "Data:" in line:
                     break
             assert any(str(tmp_path) in ln for ln in lines)
         finally:
@@ -135,7 +135,7 @@ class TestAdminCLI:
         assert proc.stdout is not None
         for _ in range(50):
             line = proc.stdout.readline()
-            if "running at" in line:
+            if "Admin panel:" in line:
                 break
 
         proc.send_signal(signal.SIGTERM)

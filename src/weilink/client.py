@@ -22,6 +22,7 @@ from weilink.models import (
     Message,
     MessageType,
     SendMediaType,
+    SendResult,
     UploadMediaType,
     UploadedMedia,
     VideoInfo,
@@ -825,7 +826,8 @@ class WeiLink:
         file: MediaContent | None = None,
         file_name: str | list[str] = "",
         video: MediaContent | None = None,
-    ) -> bool:
+        auto_recv: bool = False,
+    ) -> SendResult:
         """Send a message to a user.
 
         Automatically routes to the session that has a context_token for
@@ -841,15 +843,26 @@ class WeiLink:
             file_name: File name(s). Required when sending file(s)
                 as raw bytes. Ignored for UploadedMedia.
             video: Video bytes/UploadedMedia, or list thereof.
+            auto_recv: If True, call ``recv()`` with a short timeout
+                before sending to refresh context tokens.  Useful when
+                the caller may not have called ``recv()`` recently.
 
         Returns:
-            True if all sends succeeded, False otherwise.
+            A SendResult with ``success`` flag and any ``messages``
+            received during auto-recv.  Evaluates to ``True``/``False``
+            for backward compatibility.
 
         Raises:
             RuntimeError: If not logged in.
             ValueError: If file bytes are provided without file_name,
                 or if file and file_name list lengths don't match.
         """
+        recv_messages: list[Message] = []
+        if auto_recv:
+            try:
+                recv_messages = self.recv(timeout=1)
+            except Exception:
+                pass  # best-effort refresh
 
         def _to_list(
             v: MediaContent | None,
@@ -892,12 +905,12 @@ class WeiLink:
             if not active:
                 raise RuntimeError("Not logged in. Call login() first.")
             logger.warning("No context_token for user %s, cannot send", to)
-            return False
+            return SendResult(success=False, messages=recv_messages)
 
         ctx_token = session.context_tokens.get(to)
         if not ctx_token:
             logger.warning("No context_token for user %s, cannot send", to)
-            return False
+            return SendResult(success=False, messages=recv_messages)
 
         all_ok = True
 
@@ -961,13 +974,13 @@ class WeiLink:
 
         if not text and not send_queue:
             logger.warning("send() called with no content")
-            return False
+            return SendResult(success=False, messages=recv_messages)
 
         if all_ok:
             session.send_timestamps[to] = time.time()
             self._save_session_contexts(session)
 
-        return all_ok
+        return SendResult(success=all_ok, messages=recv_messages)
 
     # ------------------------------------------------------------------
     # Typing

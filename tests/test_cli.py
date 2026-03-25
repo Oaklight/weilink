@@ -70,7 +70,7 @@ class TestCLIAdmin:
             url = None
             for _ in range(50):
                 line = proc.stdout.readline()
-                if "running at" in line:
+                if "Admin panel:" in line:
                     url = line.strip().split()[-1]
                     break
             assert url is not None, "CLI did not print the URL"
@@ -108,7 +108,7 @@ class TestCLIAdmin:
             url = None
             for _ in range(50):
                 line = proc.stdout.readline()
-                if "running at" in line:
+                if "Admin panel:" in line:
                     url = line.strip().split()[-1]
                     break
             assert url is not None, "Legacy CLI did not print the URL"

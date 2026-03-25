@@ -211,6 +211,26 @@ class Message:
 
 
 @dataclass
+class SendResult:
+    """Result of a ``WeiLink.send()`` call.
+
+    Evaluates to ``True`` / ``False`` based on :attr:`success`, so
+    ``if wl.send(...)`` continues to work as before.
+
+    Attributes:
+        success: Whether all sends succeeded.
+        messages: Messages received during auto-recv (empty when
+            ``auto_recv=False``).
+    """
+
+    success: bool
+    messages: list[Message] = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return self.success
+
+
+@dataclass
 class _UpdatesResponse:
     """Internal model for getupdates API response."""
 

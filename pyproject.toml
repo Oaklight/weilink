@@ -47,8 +47,6 @@ server = [
 
 [project.scripts]
 weilink = "weilink.cli:main"
-weilink-admin = "weilink.admin.__main__:main"
-weilink-mcp = "weilink.mcp:main"
 
 [project.urls]
 Documentation = "https://weilink.readthedocs.io"

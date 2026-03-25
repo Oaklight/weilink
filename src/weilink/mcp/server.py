@@ -189,11 +189,18 @@ async def send_message(
         return json.dumps({"error": "No content provided."})
 
     try:
-        ok = await asyncio.to_thread(wl.send, to, **kwargs)
+        result = await asyncio.to_thread(wl.send, to, auto_recv=True, **kwargs)
     except (RuntimeError, ValueError) as e:
         return json.dumps({"error": str(e)})
 
-    return json.dumps({"success": ok})
+    # Cache any messages received during auto-recv
+    if result.messages:
+        _cache_messages(result.messages)
+
+    response: dict[str, Any] = {"success": result.success}
+    if result.messages:
+        response["new_messages"] = [_serialize_message(m) for m in result.messages]
+    return json.dumps(response)
 
 
 async def download_media(message_id: str, save_dir: str = "") -> str:

@@ -66,7 +66,7 @@ class TestWeiLinkSend:
             )
             wl = WeiLink(token_path=token_path)
             result = wl.send("unknown_user@im.wechat", "hello")
-            assert result is False
+            assert not result
 
 
 class TestWeiLinkRecv:
@@ -419,7 +419,7 @@ class TestUploadAndReuse:
                 cipher_size=112,
             )
             result = wl.send("unknown@im.wechat", image=ref)
-            assert result is False
+            assert not result
 
     def test_uploaded_media_frozen(self):
         ref = UploadedMedia(
@@ -453,7 +453,7 @@ class TestUploadAndReuse:
         with tempfile.TemporaryDirectory() as tmpdir:
             wl = self._make_client(tmpdir)
             result = wl.send("user@im.wechat")
-            assert result is False
+            assert not result
 
 
 class TestMultiSession:
@@ -651,7 +651,7 @@ class TestMultiSession:
             # Sending to user_s2 without context in default → should return False
             # because no session has context for "unknown@im.wechat"
             result = wl.send("unknown@im.wechat", "hello")
-            assert result is False
+            assert not result
 
     def test_rename_session(self):
         """rename_session() moves files and updates internal state."""
