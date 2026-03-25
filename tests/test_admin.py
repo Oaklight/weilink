@@ -7,6 +7,10 @@ import time
 import urllib.error
 import urllib.request
 
+import pytest
+
+from weilink import WeiLink
+
 
 def _kill_proc(proc: subprocess.Popen) -> None:
     """Terminate a subprocess, falling back to SIGKILL if it won't die."""
@@ -16,10 +20,6 @@ def _kill_proc(proc: subprocess.Popen) -> None:
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait(timeout=5)
-
-import pytest
-
-from weilink import WeiLink
 
 
 @pytest.fixture()
