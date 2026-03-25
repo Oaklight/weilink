@@ -17,6 +17,10 @@
 - **视频预览错误** — 将下载的视频重新上传到 CDN 可能会出现 "probe preview error"。直接上传本地文件则正常。
 - **图片 AES 密钥差异** — 接收的图片消息中，正确的解密密钥在 `image_item.aeskey`（原始 hex），而非 `media.aes_key`（base64）。SDK 已自动处理此差异。
 
+## 消息投递
+
+- **批量延迟到达** — 已观察到偶发情况：`send()` 返回成功，但消息在用户端延迟数分钟后批量送达。这是微信 / iLink 服务端的行为，不是 SDK 的 bug。正在持续跟踪中（[#2](https://github.com/Oaklight/weilink/issues/2)）。
+
 ## Context Token
 
 - **Token 按用户独立管理** — 每个用户有独立的 context_token。旧 token 在 24 小时窗口内仍然有效，即使已签发更新的 token。

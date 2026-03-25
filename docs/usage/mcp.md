@@ -26,10 +26,7 @@ WeiLink MCP 服务器支持三种传输模式：**stdio**（默认）、**SSE** 
 ### stdio（默认）
 
 ```bash
-# CLI 入口
-weilink-mcp
-
-# 或通过统一 CLI
+# 通过统一 CLI
 weilink mcp
 
 # 或通过 Python 模块
@@ -76,7 +73,8 @@ weilink mcp -t http --host 0.0.0.0 -p 8000
 {
   "mcpServers": {
     "weilink": {
-      "command": "weilink-mcp"
+      "command": "weilink",
+      "args": ["mcp"]
     }
   }
 }
@@ -85,7 +83,7 @@ weilink mcp -t http --host 0.0.0.0 -p 8000
 ### Claude Code（stdio）
 
 ```bash
-claude mcp add weilink weilink-mcp
+claude mcp add weilink -- weilink mcp
 ```
 
 ### Claude Code（HTTP）
@@ -153,6 +151,9 @@ weilink mcp -t http -p 8000
 | `video_path` | str | `""` | 本地视频路径 |
 | `voice_path` | str | `""` | 本地语音路径 |
 
+!!! note "自动刷新 context"
+    MCP 服务器在每次发送前会自动调用 `recv()` 刷新 context token。即使最近未调用 `recv_messages`，也能确保 bot 持有有效的 token。
+
 ### `download_media`
 
 下载已接收消息中的媒体文件。
@@ -182,7 +183,7 @@ weilink mcp -t http -p 8000
 
 ```mermaid
 graph LR
-    A[AI Agent] -->|MCP 协议| B[weilink-mcp]
+    A[AI Agent] -->|MCP 协议| B[WeiLink MCP]
     B -->|WeiLink SDK| C[iLink API]
     C --> D[微信]
 ```

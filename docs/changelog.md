@@ -1,6 +1,6 @@
 # 更新日志
 
-## 未发布
+## v0.3.0 (2026-03-25)
 
 - 修复 Python 3.10 多会话时 `recv()` 崩溃问题（`concurrent.futures.TimeoutError` 未被捕获）
 - OpenAPI 服务器 — 通过 `weilink openapi` 子命令以 REST API 暴露 bot 工具
@@ -15,6 +15,7 @@
 - CDN 预上传 API — `upload()` 预先上传媒体到 CDN，返回可复用的 `UploadedMedia` 引用
 - `send()` 现在接受 `UploadedMedia`，发送预上传的媒体无需重复上传
 - 新增 `MediaContent` 类型别名，简化媒体参数的类型注解
+- `send()` 新增 `auto_recv` 参数，发送前自动刷新 context token，返回 `SendResult`（兼容 bool）并携带 auto-recv 期间收到的消息；MCP 服务器默认启用
 
 ## v0.2.0 (2026-03-24)
 
