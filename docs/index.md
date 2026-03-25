@@ -19,9 +19,11 @@ hide:
 - **消息队列语义** — `login()` / `send()` / `recv()`
 - **自动状态管理** — 内部处理 `context_token` 和游标
 - **凭证持久化** — 扫码登录后自动保存 Token
-- **统一 CLI** — 单一 `weilink` 命令，包含 `admin` 和 `mcp` 子命令
+- **引用消息解析** — `Message.ref_msg` 暴露用户回复中被引用的原始消息
+- **统一 CLI** — 单一 `weilink` 命令，包含 `admin`、`mcp` 和 `openapi` 子命令
 - **Web 管理面板** — 可选的浏览器 UI，支持会话管理、扫码登录，可 [Docker 部署](usage/docker.md)
-- **MCP 服务器** — 可选的 [MCP](usage/mcp.md) 集成，支持 stdio/SSE/streamable-http 传输（`pip install weilink[mcp]`）
+- **MCP / OpenAPI 服务器** — 可选的 [MCP](usage/mcp.md) 和 [OpenAPI](usage/openapi.md) 服务器，用于 AI Agent 和 REST 集成（`pip install weilink[server]`）
+- **Docker 就绪** — 多平台容器镜像发布在 [Docker Hub](https://hub.docker.com/r/oaklight/weilink)（amd64、arm64、armv7）
 
 ## 快速开始
 
