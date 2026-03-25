@@ -105,14 +105,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["send(to=user_id)"] --> B{"Find session with<br/>most recent context_token<br/>for user_id"}
+    A["send(to=user_id)"] --> B{"Session with<br/>context_token?"}
     B -->|Found| C["Use that session"]
-    B -->|Not found| D{"Any connected<br/>session?"}
-    D -->|Yes| C2["Use first connected session"]
-    D -->|No| E["Raise RuntimeError"]
-    C --> F["Upload media (if any)"]
-    C2 --> F
-    F --> G["proto.send_message() /<br/>proto.send_media_message()"]
+    B -->|Not found| D{"Any connected?"}
+    D -->|Yes| C2["First connected"]
+    D -->|No| E["RuntimeError"]
+    C & C2 --> F["Upload media"]
+    F --> G["send_message()"]
 ```
 
 ## QR Code Login Flow
@@ -151,15 +150,17 @@ sequenceDiagram
 Media (images, voice, files, video) is encrypted with AES-128-ECB before upload and decrypted after download. The encryption key is provided by the iLink API.
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph Upload
+        direction LR
         A1[Raw bytes] --> A2["AES-128-ECB<br/>encrypt"]
-        A2 --> A3["HTTP PUT to<br/>CDN pre-signed URL"]
-        A3 --> A4["UploadedMedia<br/>(aes_key, file_key...)"]
+        A2 --> A3["HTTP PUT<br/>CDN URL"]
+        A3 --> A4["UploadedMedia"]
     end
 
     subgraph Download
-        B1["MediaInfo from<br/>received Message"] --> B2["HTTP GET from<br/>CDN URL"]
+        direction LR
+        B1["MediaInfo"] --> B2["HTTP GET<br/>CDN URL"]
         B2 --> B3["AES-128-ECB<br/>decrypt"]
         B3 --> B4[Raw bytes]
     end
