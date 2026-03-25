@@ -105,14 +105,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    A["send(to=user_id)"] --> B{"查找持有该 user_id<br/>最新 context_token<br/>的会话"}
+    A["send(to=user_id)"] --> B{"持有该用户<br/>context_token？"}
     B -->|找到| C["使用该会话"]
-    B -->|未找到| D{"有已连接的<br/>会话吗？"}
-    D -->|有| C2["使用第一个已连接的会话"]
-    D -->|无| E["抛出 RuntimeError"]
-    C --> F["上传媒体（如有）"]
-    C2 --> F
-    F --> G["proto.send_message() /<br/>proto.send_media_message()"]
+    B -->|未找到| D{"有已连接会话？"}
+    D -->|有| C2["第一个已连接"]
+    D -->|无| E["RuntimeError"]
+    C & C2 --> F["上传媒体"]
+    F --> G["send_message()"]
 ```
 
 ## 二维码登录流程
@@ -151,15 +150,17 @@ sequenceDiagram
 媒体文件（图片、语音、文件、视频）在上传前使用 AES-128-ECB 加密，下载后解密。加密密钥由 iLink API 提供。
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph 上传
+        direction LR
         A1[原始字节] --> A2["AES-128-ECB<br/>加密"]
-        A2 --> A3["HTTP PUT 到<br/>CDN 预签名 URL"]
-        A3 --> A4["UploadedMedia<br/>(aes_key, file_key...)"]
+        A2 --> A3["HTTP PUT<br/>CDN URL"]
+        A3 --> A4["UploadedMedia"]
     end
 
     subgraph 下载
-        B1["收到 Message 中的<br/>MediaInfo"] --> B2["HTTP GET<br/>CDN URL"]
+        direction LR
+        B1["MediaInfo"] --> B2["HTTP GET<br/>CDN URL"]
         B2 --> B3["AES-128-ECB<br/>解密"]
         B3 --> B4[原始字节]
     end
