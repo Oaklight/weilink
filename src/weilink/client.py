@@ -125,6 +125,89 @@ class WeiLink:
             )
         return session
 
+    def rename_session(self, old_name: str, new_name: str) -> None:
+        """Rename a session, moving its persisted files.
+
+        Args:
+            old_name: Current session name (use ``"default"`` for the
+                default session).
+            new_name: New session name.
+
+        Raises:
+            ValueError: If *old_name* does not exist or *new_name* is
+                already taken.
+        """
+        if old_name not in self._sessions:
+            raise ValueError(f"No session named {old_name!r}")
+        if new_name in self._sessions:
+            raise ValueError(f"Session {new_name!r} already exists")
+
+        session = self._sessions.pop(old_name)
+        old_dir = session.token_path.parent
+
+        # Compute new path
+        new_dir = self._base_path / new_name
+        new_token_path = new_dir / "token.json"
+
+        # Move files on disk
+        new_dir.mkdir(parents=True, exist_ok=True)
+        for fname in ("token.json", "contexts.json"):
+            src = old_dir / fname
+            if src.exists():
+                src.rename(new_dir / fname)
+        # Clean up old directory if empty and not the base path
+        if old_dir != self._base_path and old_dir.exists():
+            try:
+                old_dir.rmdir()
+            except OSError:
+                pass  # not empty, leave it
+
+        # Update session
+        session.name = new_name
+        session.token_path = new_token_path
+        self._sessions[new_name] = session
+
+        # Update default session reference if needed
+        if self._default_session is session:
+            self._default_session = session
+
+        logger.info("Renamed session %r -> %r", old_name, new_name)
+
+    def logout(self, name: str | None = None) -> None:
+        """Log out a session, removing its persisted credentials.
+
+        Args:
+            name: Session name. ``None`` logs out the default session.
+
+        Raises:
+            ValueError: If the session does not exist.
+        """
+        key = name or _DEFAULT_SESSION
+        if key not in self._sessions:
+            raise ValueError(f"No session named {key!r}")
+
+        session = self._sessions.pop(key)
+        session_dir = session.token_path.parent
+
+        # Remove persisted files
+        for fname in ("token.json", "contexts.json"):
+            f = session_dir / fname
+            if f.exists():
+                f.unlink()
+
+        # Remove directory if empty and not the base path
+        if session_dir != self._base_path and session_dir.exists():
+            try:
+                session_dir.rmdir()
+            except OSError:
+                pass
+
+        logger.info(
+            "Logged out session %r (bot_id=%s)",
+            key,
+            session.bot_info.bot_id if session.bot_info else None,
+        )
+
     def _find_session_for_user(self, user_id: str) -> _Session | None:
         """Find the session with the most recent context_token for a user."""
         best: _Session | None = None
@@ -427,16 +510,31 @@ class WeiLink:
         if len(active) == 1:
             return self._recv_session(active[0], timeout)
 
-        # Parallel poll for multiple sessions
+        # Parallel poll — return as soon as any session has messages,
+        # cancel remaining polls to avoid blocking.
+        pool = ThreadPoolExecutor(max_workers=len(active))
+        futures = {pool.submit(self._recv_session, s, timeout): s for s in active}
         messages: list[Message] = []
-        with ThreadPoolExecutor(max_workers=len(active)) as pool:
-            futures = {pool.submit(self._recv_session, s, timeout): s for s in active}
-            for f in as_completed(futures):
+
+        try:
+            for f in as_completed(futures, timeout=timeout + 5):
                 try:
-                    messages.extend(f.result())
+                    result = f.result()
                 except Exception as e:
                     session = futures[f]
                     logger.error("recv error for session %s: %s", session.name, e)
+                    continue
+                messages.extend(result)
+                if messages:
+                    # Got messages — cancel remaining futures and return early
+                    for remaining in futures:
+                        remaining.cancel()
+                    break
+        except TimeoutError:
+            pass
+        finally:
+            pool.shutdown(wait=False)
+
         return messages
 
     def _recv_session(self, session: _Session, timeout: float) -> list[Message]:

@@ -652,3 +652,85 @@ class TestMultiSession:
             # because no session has context for "unknown@im.wechat"
             result = wl.send("unknown@im.wechat", "hello")
             assert result is False
+
+    def test_rename_session(self):
+        """rename_session() moves files and updates internal state."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+            wl._default_session.context_tokens["user@im.wechat"] = "ctx"
+            wl._default_session.context_timestamps["user@im.wechat"] = time.time()
+            wl._save_state()
+            wl._save_contexts()
+
+            # Rename default -> pipi
+            wl.rename_session("default", "pipi")
+
+            assert "default" not in wl._sessions
+            assert "pipi" in wl._sessions
+            assert wl._default_session.name == "pipi"
+            assert wl.bot_id == "bot1@im.bot"  # still accessible via default ref
+
+            # Files moved
+            assert (Path(tmpdir) / "pipi" / "token.json").exists()
+            assert (Path(tmpdir) / "pipi" / "contexts.json").exists()
+            # Old files cleaned up
+            assert not (Path(tmpdir) / "token.json").exists()
+
+    def test_rename_session_errors(self):
+        """rename_session() raises on invalid names."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            try:
+                wl.rename_session("nonexistent", "new")
+                assert False, "Should raise ValueError"
+            except ValueError:
+                pass
+
+            # Duplicate name
+            from weilink.client import _Session
+
+            s2 = _Session(
+                name="taken",
+                token_path=Path(tmpdir) / "taken" / "token.json",
+            )
+            wl._sessions["taken"] = s2
+            try:
+                wl.rename_session("default", "taken")
+                assert False, "Should raise ValueError"
+            except ValueError:
+                pass
+
+    def test_logout_removes_files(self):
+        """logout() deletes persisted files and removes the session."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+
+            # Create and save a named session
+            session = wl._create_session("foo", Path(tmpdir) / "foo" / "token.json")
+            session.bot_info = BotInfo(
+                bot_id="bot_foo@im.bot",
+                base_url="https://example.com",
+                token="tok_foo",
+            )
+            wl._save_session_state(session)
+            wl._save_session_contexts(session)
+            assert (Path(tmpdir) / "foo" / "token.json").exists()
+
+            wl.logout("foo")
+            assert "foo" not in wl._sessions
+            assert not (Path(tmpdir) / "foo" / "token.json").exists()
+            assert not (Path(tmpdir) / "foo").exists()  # dir removed
+
+    def test_logout_nonexistent_raises(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(base_path=tmpdir)
+            try:
+                wl.logout("nonexistent")
+                assert False, "Should raise ValueError"
+            except ValueError:
+                pass
