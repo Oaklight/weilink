@@ -84,6 +84,7 @@ nav:
       - Quick Start: usage/quickstart.md
       - Multi-Session: usage/multi_session.md
       - MCP Server: usage/mcp.md
+      - Docker Deployment: usage/docker.md
       - Tips & Gotchas: usage/gotchas.md
   - Architecture: architecture.md
   - API Reference:
