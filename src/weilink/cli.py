@@ -82,12 +82,39 @@ def _run_mcp(args: argparse.Namespace) -> None:
             admin_info = _wl.start_admin(host=args.host, port=args.admin_port)
             print(f"WeiLink admin panel running at {admin_info.url}")
 
-    # run_mcp blocks (FastMCP.run is blocking).
     transport = cast(str, args.transport)
     if transport == "http":
         transport = "streamable-http"
     run_mcp(
         transport=transport,  # type: ignore[arg-type]
+        host=args.host,
+        port=args.port,
+        base_path=base_path,
+    )
+
+
+def _run_openapi(args: argparse.Namespace) -> None:
+    """Start the OpenAPI server, optionally with an admin panel."""
+    from weilink._banner import display_startup_banner
+    from weilink.mcp.server import run_openapi
+
+    display_startup_banner(no_banner=args.no_banner)
+
+    base_path = Path(args.base_path) if args.base_path else None
+
+    # Optionally start admin panel in the same process.
+    if args.admin_port is not None:
+        from weilink.mcp.server import _init_client
+
+        _init_client(base_path)
+
+        from weilink.mcp.server import _wl
+
+        if _wl is not None:
+            admin_info = _wl.start_admin(host=args.host, port=args.admin_port)
+            print(f"WeiLink admin panel running at {admin_info.url}")
+
+    run_openapi(
         host=args.host,
         port=args.port,
         base_path=base_path,
@@ -141,6 +168,48 @@ def main(argv: list[str] | None = None) -> None:
         help="logging level (default: INFO)",
     )
     admin_parser.add_argument(
+        "--no-banner",
+        action="store_true",
+        default=False,
+        help="suppress the ASCII banner on startup",
+    )
+
+    # ── openapi subcommand ────────────────────────────────────────
+    openapi_parser = subparsers.add_parser(
+        "openapi",
+        help="Start the OpenAPI (REST) server for tool integration.",
+    )
+    openapi_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="host address to bind to (default: 127.0.0.1)",
+    )
+    openapi_parser.add_argument(
+        "--port",
+        "-p",
+        type=int,
+        default=8000,
+        help="port number (default: 8000)",
+    )
+    openapi_parser.add_argument(
+        "--base-path",
+        "-d",
+        default=None,
+        help="data directory / profile path (default: ~/.weilink/)",
+    )
+    openapi_parser.add_argument(
+        "--admin-port",
+        type=int,
+        default=None,
+        help="also start admin panel on this port (same host)",
+    )
+    openapi_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="logging level (default: INFO)",
+    )
+    openapi_parser.add_argument(
         "--no-banner",
         action="store_true",
         default=False,
@@ -205,6 +274,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "admin":
         _run_admin(args)
+    elif args.command == "openapi":
+        _run_openapi(args)
     elif args.command == "mcp":
         _run_mcp(args)
 

@@ -168,22 +168,33 @@ def poll_qr_status(qrcode: str, base_url: str = BASE_URL) -> dict[str, Any]:
     return get(EP_QR_STATUS, params={"qrcode": qrcode}, base_url=base_url, timeout=40.0)
 
 
-def get_updates(cursor: str, token: str, base_url: str = BASE_URL) -> dict[str, Any]:
+def get_updates(
+    cursor: str,
+    token: str,
+    base_url: str = BASE_URL,
+    timeout: float | None = None,
+) -> dict[str, Any]:
     """Long-poll for new messages.
 
     Args:
         cursor: Sync cursor from previous response (empty string for first call).
         token: Bot bearer token.
         base_url: API base URL.
+        timeout: HTTP timeout in seconds.  Defaults to ``LONGPOLL_TIMEOUT + 5``
+            (40 s) which is long enough for the server-side long-poll to
+            complete.  Pass a shorter value (e.g. 5) for quick, non-blocking
+            checks.
 
     Returns:
         Dict with 'msgs', 'get_updates_buf', etc.
     """
+    if timeout is None:
+        timeout = LONGPOLL_TIMEOUT + 5
     body = {
         "get_updates_buf": cursor,
         "base_info": {"channel_version": CHANNEL_VERSION},
     }
-    return post(EP_GET_UPDATES, body, token, base_url, timeout=LONGPOLL_TIMEOUT + 5)
+    return post(EP_GET_UPDATES, body, token, base_url, timeout=timeout)
 
 
 def send_message(
