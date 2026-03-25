@@ -21,15 +21,50 @@ pip install weilink[mcp]
 
 ## 运行
 
+WeiLink MCP 服务器支持三种传输模式：**stdio**（默认）、**SSE** 和 **streamable-http**。
+
+### stdio（默认）
+
 ```bash
 # CLI 入口
 weilink-mcp
+
+# 或通过统一 CLI
+weilink mcp
 
 # 或通过 Python 模块
 python -m weilink.mcp
 ```
 
-服务器使用 **stdio** 传输 — 由 MCP 客户端（Claude Desktop、Cursor 等）启动，而非独立运行。
+stdio 传输由 MCP 客户端（Claude Desktop、Cursor 等）启动，而非独立运行。
+
+### SSE / HTTP
+
+```bash
+# SSE 传输
+weilink mcp -t sse -p 8000
+
+# Streamable HTTP 传输（推荐用于网络访问）
+weilink mcp -t http -p 8000
+
+# 同时运行管理面板
+weilink mcp -t http -p 8000 --admin-port 8080
+
+# 绑定到所有网卡
+weilink mcp -t http --host 0.0.0.0 -p 8000
+```
+
+### CLI 选项
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `-t, --transport` | 传输模式：`stdio`、`sse`、`streamable-http`（或 `http`） | `stdio` |
+| `--host` | SSE / HTTP 绑定地址 | `127.0.0.1` |
+| `-p, --port` | SSE / HTTP 端口 | `8000` |
+| `-d, --base-path` | 数据目录（配置路径） | `~/.weilink/` |
+| `--admin-port` | 同时在此端口启动管理面板（同一地址） | *（禁用）* |
+| `--log-level` | 日志级别（`DEBUG`、`INFO`、`WARNING`、`ERROR`） | `INFO` |
+| `--no-banner` | 禁止启动时显示 ASCII 横幅 | *（关闭）* |
 
 ## 客户端配置
 
@@ -47,11 +82,35 @@ python -m weilink.mcp
 }
 ```
 
-### Claude Code
+### Claude Code（stdio）
 
 ```bash
 claude mcp add weilink weilink-mcp
 ```
+
+### Claude Code（HTTP）
+
+先启动 MCP 服务器：
+
+```bash
+weilink mcp -t http -p 8000
+```
+
+然后在 Claude Code 设置（`~/.claude/settings.json`）中添加：
+
+```json
+{
+  "mcpServers": {
+    "weilink": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+!!! tip "为什么用 HTTP？"
+    HTTP 传输让 MCP 服务器在 Claude Code 会话之间持久运行。只需启动一次，所有 Claude Code 会话都可以连接同一个服务器实例——无需在开始新对话时重启服务器。
 
 ### Cursor / VS Code
 
