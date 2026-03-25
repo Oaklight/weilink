@@ -734,3 +734,36 @@ class TestMultiSession:
                 assert False, "Should raise ValueError"
             except ValueError:
                 pass
+
+    def test_auto_discover_sessions(self):
+        """Named sessions on disk are auto-discovered on init."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Pre-create session dirs with token files
+            for name, bot_id in [("alice", "alice@im.bot"), ("bob", "bob@im.bot")]:
+                d = Path(tmpdir) / name
+                d.mkdir()
+                (d / "token.json").write_text(
+                    json.dumps(
+                        {
+                            "bot_id": bot_id,
+                            "base_url": "https://example.com",
+                            "token": f"tok_{name}",
+                        }
+                    )
+                )
+
+            wl = WeiLink(base_path=tmpdir)
+            assert "alice" in wl.sessions
+            assert "bob" in wl.sessions
+            assert "default" in wl.sessions
+            assert wl.bot_ids["alice"] == "alice@im.bot"
+            assert wl.bot_ids["bob"] == "bob@im.bot"
+
+    def test_auto_discover_ignores_non_session_dirs(self):
+        """Directories without token.json are ignored."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "random_dir").mkdir()
+            (Path(tmpdir) / "some_file.txt").write_text("not a session")
+
+            wl = WeiLink(base_path=tmpdir)
+            assert wl.sessions == ["default"]

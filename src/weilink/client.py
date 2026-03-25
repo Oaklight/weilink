@@ -103,6 +103,14 @@ class WeiLink:
         self._sessions: dict[str, _Session] = {}
         self._default_session = self._create_session(_DEFAULT_SESSION, default_token)
 
+        # Auto-discover named sessions from disk
+        if self._base_path.is_dir():
+            for child in sorted(self._base_path.iterdir()):
+                if child.is_dir() and (child / "token.json").exists():
+                    name = child.name
+                    if name not in self._sessions:
+                        self._create_session(name, child / "token.json")
+
     # ------------------------------------------------------------------
     # Session management
     # ------------------------------------------------------------------
