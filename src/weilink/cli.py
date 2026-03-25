@@ -13,7 +13,7 @@ import logging
 import signal
 import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 
 def _run_admin(args: argparse.Namespace) -> None:
@@ -82,11 +82,12 @@ def _run_mcp(args: argparse.Namespace) -> None:
             admin_info = _wl.start_admin(host=args.host, port=args.admin_port)
             print(f"WeiLink admin panel running at {admin_info.url}")
 
-    transport = cast(str, args.transport)
-    if transport == "http":
-        transport = "streamable-http"
+    transport_raw = cast(str, args.transport)
+    if transport_raw == "http":
+        transport_raw = "streamable-http"
+    transport = cast(Literal["stdio", "sse", "streamable-http"], transport_raw)
     run_mcp(
-        transport=transport,  # type: ignore[arg-type]
+        transport=transport,
         host=args.host,
         port=args.port,
         base_path=base_path,
