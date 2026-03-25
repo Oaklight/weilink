@@ -21,15 +21,50 @@ This installs [toolregistry-server](https://github.com/Oaklight/toolregistry) wi
 
 ## Run
 
+WeiLink MCP server supports three transports: **stdio** (default), **SSE**, and **streamable-http**.
+
+### stdio (default)
+
 ```bash
 # CLI entry point
 weilink-mcp
+
+# Or via unified CLI
+weilink mcp
 
 # Or via Python module
 python -m weilink.mcp
 ```
 
-The server uses **stdio** transport — it is launched by an MCP client (Claude Desktop, Cursor, etc.) rather than run standalone.
+stdio transport is launched by an MCP client (Claude Desktop, Cursor, etc.) rather than run standalone.
+
+### SSE / HTTP
+
+```bash
+# SSE transport
+weilink mcp -t sse -p 8000
+
+# Streamable HTTP transport (recommended for network access)
+weilink mcp -t http -p 8000
+
+# With admin panel in the same process
+weilink mcp -t http -p 8000 --admin-port 8080
+
+# Bind to all interfaces
+weilink mcp -t http --host 0.0.0.0 -p 8000
+```
+
+### CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-t, --transport` | Transport: `stdio`, `sse`, `streamable-http` (or `http`) | `stdio` |
+| `--host` | Host address for SSE / HTTP | `127.0.0.1` |
+| `-p, --port` | Port for SSE / HTTP | `8000` |
+| `-d, --base-path` | Data directory (profile path) | `~/.weilink/` |
+| `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
+| `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+| `--no-banner` | Suppress the ASCII banner on startup | *(off)* |
 
 ## Client Configuration
 
@@ -47,11 +82,35 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Claude Code
+### Claude Code (stdio)
 
 ```bash
 claude mcp add weilink weilink-mcp
 ```
+
+### Claude Code (HTTP)
+
+First start the MCP server:
+
+```bash
+weilink mcp -t http -p 8000
+```
+
+Then add it to Claude Code settings (`~/.claude/settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "weilink": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+!!! tip "Why HTTP?"
+    HTTP transport lets the MCP server persist across Claude Code sessions. You start it once and all Claude Code sessions can connect to the same server instance — no need to restart the server when you start a new conversation.
 
 ### Cursor / VS Code
 
