@@ -1,6 +1,7 @@
 # WeiLink
 
 [![PyPI](https://img.shields.io/pypi/v/weilink?color=green)](https://pypi.org/project/weilink/)
+[![PyPI pre-release](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Oaklight/9f3a274eecbc4df4e1ae5d0f0601e501/raw/pypi-badge.json)](https://pypi.org/project/weilink/#history)
 [![GitHub Release](https://img.shields.io/github/v/release/Oaklight/weilink?color=green)](https://github.com/Oaklight/weilink/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Python](https://img.shields.io/pypi/pyversions/weilink?color=green)](https://pypi.org/project/weilink/)

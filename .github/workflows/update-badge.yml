@@ -1,0 +1,33 @@
+name: Update PyPI Pre-release Badge
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  update-badge:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Get latest PyPI version (including pre-releases)
+        id: pypi
+        run: |
+          VERSION=$(python3 -c "
+          import urllib.request, json
+          from packaging.version import Version
+          data = json.loads(urllib.request.urlopen('https://pypi.org/pypi/weilink/json').read())
+          print(max(data['releases'], key=Version))
+          ")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update badge gist
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: 9f3a274eecbc4df4e1ae5d0f0601e501
+          filename: pypi-badge.json
+          label: pypi pre-release
+          message: ${{ steps.pypi.outputs.version }}
+          color: green
