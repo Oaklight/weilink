@@ -35,10 +35,10 @@ test = [
     "coverage>=7.0.0",
 ]
 mcp = [
-    "toolregistry-server[mcp]>=0.1.2",
+    "toolregistry-server[mcp]>=0.1.2,<0.2.0",
 ]
 openapi = [
-    "toolregistry-server[openapi]>=0.1.2",
+    "toolregistry-server[openapi]>=0.1.2,<0.2.0",
 ]
 server = [
     "weilink[mcp]",
