@@ -1,0 +1,15 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      basePath:
+        type: string
+        description: "Base directory for session storage (default: ~/.weilink/)"
+    required: []
+  commandFunction:
+    |-
+    (config) => ({ command: 'weilink-mcp', args: [] })
+  exampleConfig: {}
