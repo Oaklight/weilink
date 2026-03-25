@@ -4,7 +4,7 @@ WeiLink Docker 镜像将 **MCP 服务器**（AI agent 集成）和**管理面板
 
 ## 统一 CLI
 
-`weilink` 命令提供两个子命令：
+`weilink` 命令提供三个子命令：
 
 ```bash
 # 仅管理面板
@@ -15,6 +15,12 @@ weilink mcp
 
 # MCP 服务器（SSE）+ 管理面板，同一进程
 weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
+
+# OpenAPI 服务器（REST API）
+weilink openapi --host 0.0.0.0 -p 8000
+
+# OpenAPI 服务器 + 管理面板，同一进程
+weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
 ```
 
 ### `weilink admin` 选项
@@ -36,6 +42,17 @@ weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080 -d /data/weilink
 | `-d, --base-path` | 数据目录（Profile 路径） | `~/.weilink/` |
 | `--admin-port` | 同时在此端口启动管理面板（共用 host） | *（不启用）* |
 | `--log-level` | 日志级别（`DEBUG`、`INFO`、`WARNING`、`ERROR`） | `INFO` |
+
+### `weilink openapi` 选项
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--host` | 绑定地址 | `127.0.0.1` |
+| `-p, --port` | 端口号 | `8000` |
+| `-d, --base-path` | 数据目录（Profile 路径） | `~/.weilink/` |
+| `--admin-port` | 同时在此端口启动管理面板（共用 host） | *（不启用）* |
+| `--log-level` | 日志级别（`DEBUG`、`INFO`、`WARNING`、`ERROR`） | `INFO` |
+| `--no-banner` | 抑制启动时的 ASCII 横幅 | *（关闭）* |
 
 ### 多 Profile
 

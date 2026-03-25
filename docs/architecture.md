@@ -24,7 +24,13 @@ graph TB
     end
 
     subgraph "weilink.mcp"
-        mcp_srv["__init__.py<br/><i>MCP 服务器入口</i>"]
+        mcp_srv["server.py<br/><i>工具定义</i>"]
+    end
+
+    subgraph "toolregistry-server"
+        tr["ToolRegistry<br/><i>统一工具注册表</i>"]
+        mcp_out["MCP 传输<br/><i>stdio / sse / streamable-http</i>"]
+        openapi_out["OpenAPI 传输<br/><i>REST + Swagger UI</i>"]
     end
 
     client --> protocol
@@ -37,6 +43,9 @@ graph TB
     admin_hdl --> protocol
     admin_hdl --> qr
     admin_hdl --> client
+    mcp_srv --> tr
+    tr --> mcp_out
+    tr --> openapi_out
     mcp_srv --> client
 ```
 
@@ -234,3 +243,36 @@ flowchart TD
 ```
 
 只读端点（状态、会话列表）无需加锁即可访问会话数据。写操作（登录确认、登出、重命名）通过 `threading.Lock` 串行化，防止竞态条件。
+
+## 双模式服务器架构
+
+WeiLink 使用 [toolregistry-server](https://github.com/Oaklight/toolregistry) 将 bot 工具通过 **MCP** 和 **OpenAPI** 两种协议暴露，基于同一套工具定义。
+
+```mermaid
+flowchart LR
+    subgraph "weilink.mcp.server"
+        tools["工具函数<br/>(recv, send, download, ...)"]
+        registry["ToolRegistry"]
+    end
+
+    subgraph "toolregistry-server"
+        rt["RouteTable"]
+        mcp["MCP 服务器<br/>(stdio / sse / streamable-http)"]
+        openapi["OpenAPI 应用<br/>(FastAPI + Swagger UI)"]
+    end
+
+    tools --> registry
+    registry --> rt
+    rt --> mcp
+    rt --> openapi
+
+    mcp -->|"MCP 协议"| agent["AI Agent"]
+    openapi -->|"REST API"| client["HTTP 客户端"]
+```
+
+工具以异步 Python 函数形式定义在 `weilink.mcp.server` 中，注册到 `ToolRegistry`，然后通过任一传输方式提供服务：
+
+- **`weilink mcp`** — 使用 `toolregistry_server.mcp` 创建 MCP 服务器
+- **`weilink openapi`** — 使用 `toolregistry_server.openapi` 创建 FastAPI 应用
+
+两种模式共享同一个全局 `WeiLink` 客户端实例和消息缓存。

@@ -2,7 +2,10 @@
 
 ## 未发布
 
-- 统一 CLI — 单一 `weilink` 命令，包含 `admin` 和 `mcp` 子命令
+- 修复 Python 3.10 多会话时 `recv()` 崩溃问题（`concurrent.futures.TimeoutError` 未被捕获）
+- OpenAPI 服务器 — 通过 `weilink openapi` 子命令以 REST API 暴露 bot 工具
+- `get_updates()` 新增 `timeout` 参数
+- 统一 CLI — 单一 `weilink` 命令，包含 `admin`、`mcp` 和 `openapi` 子命令
 - MCP 多传输模式 — 支持 `stdio`、`sse` 和 `streamable-http` 传输
 - Web 管理面板 — 浏览器 UI，支持会话管理、扫码登录和状态监控
 - Docker 部署 — 容器镜像内置 MCP SSE + 管理面板，附带 `docker-compose.yaml`

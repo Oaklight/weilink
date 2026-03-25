@@ -8,7 +8,16 @@ WeiLink 提供可选的 [MCP](https://modelcontextprotocol.io/)（Model Context 
 pip install weilink[mcp]
 ```
 
-这会在核心包之外安装官方 MCP SDK（`mcp>=1.8.0`）。
+这会在核心包之外安装 [toolregistry-server](https://github.com/Oaklight/toolregistry) 的 MCP 支持。
+
+!!! tip "MCP + OpenAPI"
+    一次性安装 MCP 和 OpenAPI 服务器支持：
+
+    ```bash
+    pip install weilink[server]
+    ```
+
+    详见 [OpenAPI 服务器](openapi.md) 了解 REST API 模式。
 
 ## 运行
 
