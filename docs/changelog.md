@@ -1,7 +1,13 @@
 # 更新日志
 
-## v0.3.0b2 (2026-03-25)
+## 未发布
 
+- 统一 CLI — 单一 `weilink` 命令，包含 `admin` 和 `mcp` 子命令
+- MCP 多传输模式 — 支持 `stdio`、`sse` 和 `streamable-http` 传输
+- Web 管理面板 — 浏览器 UI，支持会话管理、扫码登录和状态监控
+- Docker 部署 — 容器镜像内置 MCP SSE + 管理面板，附带 `docker-compose.yaml`
+- `weilink mcp` 的 `--admin-port` 参数，可在同一进程中运行管理面板和 MCP 服务器
+- 启动横幅与 PyPI 版本检查（`--no-banner` 可抑制）
 - 多会话支持 — 通过 `login(name="...")` 将一个 bot 注册到多个微信账号；`recv()` 并发轮询所有会话，`send()` 自动路由到正确的会话
 - CDN 预上传 API — `upload()` 预先上传媒体到 CDN，返回可复用的 `UploadedMedia` 引用
 - `send()` 现在接受 `UploadedMedia`，发送预上传的媒体无需重复上传
