@@ -83,6 +83,7 @@ nav:
       - Installation: usage/installation.md
       - Quick Start: usage/quickstart.md
       - Multi-Session: usage/multi_session.md
+      - MCP Server: usage/mcp.md
       - Tips & Gotchas: usage/gotchas.md
   - Architecture: architecture.md
   - API Reference:
