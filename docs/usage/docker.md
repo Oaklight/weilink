@@ -1,6 +1,6 @@
 # Docker 部署
 
-WeiLink Docker 镜像将 **MCP 服务器**（AI agent 集成）和**管理面板**（Web UI 会话管理）打包在同一个容器中。Docker 外的 CLI 用法参见 [CLI 参考](cli.md)。
+WeiLink Docker 镜像将 **MCP / OpenAPI 服务器**（供 AI agent 及其他 LLM 工具集成）和**管理面板**（Web UI 会话管理）打包在同一个容器中。Docker 外的 CLI 用法参见 [CLI 参考](cli.md)。
 
 ## 快速开始
 
