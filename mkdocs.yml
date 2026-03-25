@@ -78,6 +78,7 @@ nav:
   - 使用指南:
       - 安装: usage/installation.md
       - 快速开始: usage/quickstart.md
+      - 多会话: usage/multi_session.md
       - 注意事项: usage/gotchas.md
   - API 参考:
       - WeiLink: api/client.md
