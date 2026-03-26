@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Union
+from typing import Any, Union
 
 
 class MessageType(IntEnum):
@@ -215,6 +215,35 @@ class RefMessage:
     file: FileInfo | None = None
     video: VideoInfo | None = None
 
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-friendly dict."""
+        result: dict[str, Any] = {"msg_type": self.msg_type.name}
+        if self.text is not None:
+            result["text"] = self.text
+        if self.image is not None:
+            result["image"] = {
+                "url": self.image.url,
+                "thumb_width": self.image.thumb_width,
+                "thumb_height": self.image.thumb_height,
+            }
+        if self.voice is not None:
+            result["voice"] = {
+                "playtime": self.voice.playtime,
+                "text": self.voice.text,
+            }
+        if self.file is not None:
+            result["file"] = {
+                "file_name": self.file.file_name,
+                "file_size": self.file.file_size,
+            }
+        if self.video is not None:
+            result["video"] = {
+                "play_length": self.video.play_length,
+                "thumb_width": self.video.thumb_width,
+                "thumb_height": self.video.thumb_height,
+            }
+        return result
+
 
 @dataclass(frozen=True)
 class Message:
@@ -246,6 +275,43 @@ class Message:
     context_token: str = ""
     bot_id: str | None = None
     ref_msg: RefMessage | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to a JSON-friendly dict."""
+        result: dict[str, Any] = {
+            "message_id": self.message_id,
+            "from_user": self.from_user,
+            "msg_type": self.msg_type.name,
+            "timestamp": self.timestamp,
+            "bot_id": self.bot_id,
+        }
+        if self.text is not None:
+            result["text"] = self.text
+        if self.image is not None:
+            result["image"] = {
+                "url": self.image.url,
+                "thumb_width": self.image.thumb_width,
+                "thumb_height": self.image.thumb_height,
+            }
+        if self.voice is not None:
+            result["voice"] = {
+                "playtime": self.voice.playtime,
+                "text": self.voice.text,
+            }
+        if self.file is not None:
+            result["file"] = {
+                "file_name": self.file.file_name,
+                "file_size": self.file.file_size,
+            }
+        if self.video is not None:
+            result["video"] = {
+                "play_length": self.video.play_length,
+                "thumb_width": self.video.thumb_width,
+                "thumb_height": self.video.thumb_height,
+            }
+        if self.ref_msg is not None:
+            result["ref_msg"] = self.ref_msg.to_dict()
+        return result
 
 
 @dataclass

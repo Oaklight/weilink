@@ -55,69 +55,6 @@ def _cache_messages(messages: list[Message]) -> None:
         _message_cache.popitem(last=False)
 
 
-def _serialize_message(msg: Message) -> dict[str, Any]:
-    """Convert a Message to a JSON-friendly dict."""
-    result: dict[str, Any] = {
-        "message_id": msg.message_id,
-        "from_user": msg.from_user,
-        "msg_type": msg.msg_type.name,
-        "timestamp": msg.timestamp,
-        "bot_id": msg.bot_id,
-    }
-    if msg.text is not None:
-        result["text"] = msg.text
-    if msg.image is not None:
-        result["image"] = {
-            "url": msg.image.url,
-            "thumb_width": msg.image.thumb_width,
-            "thumb_height": msg.image.thumb_height,
-        }
-    if msg.voice is not None:
-        result["voice"] = {
-            "playtime": msg.voice.playtime,
-            "text": msg.voice.text,
-        }
-    if msg.file is not None:
-        result["file"] = {
-            "file_name": msg.file.file_name,
-            "file_size": msg.file.file_size,
-        }
-    if msg.video is not None:
-        result["video"] = {
-            "play_length": msg.video.play_length,
-            "thumb_width": msg.video.thumb_width,
-            "thumb_height": msg.video.thumb_height,
-        }
-    if msg.ref_msg is not None:
-        ref: dict[str, Any] = {"msg_type": msg.ref_msg.msg_type.name}
-        if msg.ref_msg.text is not None:
-            ref["text"] = msg.ref_msg.text
-        if msg.ref_msg.image is not None:
-            ref["image"] = {
-                "url": msg.ref_msg.image.url,
-                "thumb_width": msg.ref_msg.image.thumb_width,
-                "thumb_height": msg.ref_msg.image.thumb_height,
-            }
-        if msg.ref_msg.voice is not None:
-            ref["voice"] = {
-                "playtime": msg.ref_msg.voice.playtime,
-                "text": msg.ref_msg.voice.text,
-            }
-        if msg.ref_msg.file is not None:
-            ref["file"] = {
-                "file_name": msg.ref_msg.file.file_name,
-                "file_size": msg.ref_msg.file.file_size,
-            }
-        if msg.ref_msg.video is not None:
-            ref["video"] = {
-                "play_length": msg.ref_msg.video.play_length,
-                "thumb_width": msg.ref_msg.video.thumb_width,
-                "thumb_height": msg.ref_msg.video.thumb_height,
-            }
-        result["ref_msg"] = ref
-    return result
-
-
 # ------------------------------------------------------------------
 # Tool functions (registered via toolregistry)
 # ------------------------------------------------------------------
@@ -150,7 +87,7 @@ async def recv_messages(timeout: float = 5.0) -> str:
         return json.dumps({"error": str(e)})
 
     _cache_messages(messages)
-    return json.dumps([_serialize_message(m) for m in messages])
+    return json.dumps([m.to_dict() for m in messages])
 
 
 async def send_message(
@@ -226,7 +163,7 @@ async def send_message(
 
     response: dict[str, Any] = {"success": result.success}
     if result.messages:
-        response["new_messages"] = [_serialize_message(m) for m in result.messages]
+        response["new_messages"] = [m.to_dict() for m in result.messages]
     return json.dumps(response)
 
 
