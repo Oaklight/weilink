@@ -120,6 +120,7 @@ def get(
     token: str | None = None,
     base_url: str = BASE_URL,
     timeout: float = 10.0,
+    extra_headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """GET from an iLink endpoint.
 
@@ -129,6 +130,7 @@ def get(
         token: Bot bearer token (optional for login endpoints).
         base_url: API base URL.
         timeout: Request timeout in seconds.
+        extra_headers: Additional headers to include in the request.
 
     Returns:
         Parsed JSON response as a dict.
@@ -139,6 +141,8 @@ def get(
         url = f"{url}?{query}"
 
     headers = _make_headers(token)
+    if extra_headers:
+        headers.update(extra_headers)
     req = urllib.request.Request(url, headers=headers, method="GET")
 
     try:
@@ -165,7 +169,13 @@ def poll_qr_status(qrcode: str, base_url: str = BASE_URL) -> dict[str, Any]:
     Returns:
         Dict with 'status', and on success: 'bot_token', 'baseurl'.
     """
-    return get(EP_QR_STATUS, params={"qrcode": qrcode}, base_url=base_url, timeout=40.0)
+    return get(
+        EP_QR_STATUS,
+        params={"qrcode": qrcode},
+        base_url=base_url,
+        timeout=40.0,
+        extra_headers={"iLink-App-ClientVersion": "1"},
+    )
 
 
 def get_updates(
