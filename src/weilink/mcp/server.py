@@ -427,6 +427,7 @@ async def check_login() -> str:
             }
         )
 
+    # Protocol returns "wait" when no scan yet; map to "pending" for MCP output.
     return json.dumps({"status": "pending", "message": "Waiting for scan..."})
 
 

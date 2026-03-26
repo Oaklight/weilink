@@ -699,6 +699,8 @@ class WeiLink:
                 print("Waiting for scan...", end="", flush=True)
                 continue
 
+            # "wait" = server says no scan yet; any other unknown status
+            # is treated the same — keep polling.
             print(".", end="", flush=True)
 
         raise proto.ILinkError(ret=-1, errmsg="QR code login timed out (5 min)")
