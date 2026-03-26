@@ -19,8 +19,8 @@ Practical tips and tricky parts discovered during development of the WeChat iLin
 
 ## Message Delivery
 
-- **Text size limit: 16 KiB UTF-8** — The server rejects text items exceeding 16 384 UTF-8 bytes (`ret: -2`). Note: the limit is on **byte length**, not character count — a message with 16 000 ASCII characters fits, but 6 000 Chinese characters (~18 000 bytes) does not. The SDK automatically splits long texts into multiple messages.
-- **10 replies per context_token** — Each context_token allows at most 10 outbound messages. After that, `send()` returns `ret: -2`. The counter resets when the user sends a new message (which issues a fresh token). See [epiral/weixin-bot#3](https://github.com/epiral/weixin-bot/issues/3).
+- **Text size limit: 16 KiB UTF-8** — The server rejects text items exceeding 16 384 UTF-8 bytes (`ret: -2`). Note: the limit is on **byte length**, not character count — a message with 16 000 ASCII characters fits, but 6 000 Chinese characters (~18 000 bytes) does not. The SDK raises `TextTooLongError` before sending if the text exceeds this limit, reporting the actual byte length so you can truncate or split manually.
+- **10 replies per context_token** — Each context_token allows at most 10 outbound messages (text or media). The SDK tracks the count per user and raises `QuotaExhaustedError` when the limit is reached. The counter resets when the user sends a new message (which issues a fresh token). `SendResult.remaining` shows how many sends are left. See [epiral/weixin-bot#3](https://github.com/epiral/weixin-bot/issues/3).
 - **Batch delayed delivery** — Occasionally, `send()` returns success but messages arrive at the user's WeChat several minutes later in a batch. This is a WeChat / iLink server-side behavior, not an SDK bug. Using `auto_recv=True` on `send()` may partially mitigate this by refreshing context tokens before sending. Under investigation ([#2](https://github.com/Oaklight/weilink/issues/2)).
 
 ## Context Tokens
