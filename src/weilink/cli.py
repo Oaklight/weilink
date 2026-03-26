@@ -95,6 +95,48 @@ def _run_mcp(args: argparse.Namespace) -> None:
     )
 
 
+def _run_migrate(args: argparse.Namespace) -> None:
+    """Run credential migration from another tool."""
+    from pathlib import Path
+
+    if args.migrate_source == "openclaw":
+        from weilink.migrate import migrate_openclaw
+
+        source = Path(args.source or "~/.openclaw").expanduser()
+        target = Path(args.base_path or "~/.weilink").expanduser()
+
+        if args.dry_run:
+            print("[dry-run] No files will be written.\n")
+
+        print(f"  Source: {source}")
+        print(f"  Target: {target}\n")
+
+        results = migrate_openclaw(source, target, dry_run=args.dry_run)
+
+        migrated = skipped = errors = 0
+        for r in results:
+            if r.status == "migrated":
+                migrated += 1
+                tag = "[dry-run] " if args.dry_run else ""
+                print(f"  + {tag}{r.account_id} -> {r.session_name}")
+            elif r.status == "skipped":
+                skipped += 1
+                print(f"  - {r.account_id} (skipped: already exists)")
+            else:
+                errors += 1
+                print(f"  ! {r.detail}")
+
+        print()
+        parts = []
+        if migrated:
+            parts.append(f"{migrated} migrated")
+        if skipped:
+            parts.append(f"{skipped} skipped")
+        if errors:
+            parts.append(f"{errors} error(s)")
+        print(f"  Done: {', '.join(parts) or 'nothing to do'}.")
+
+
 def _run_openapi(args: argparse.Namespace) -> None:
     """Start the OpenAPI server, optionally with an admin panel."""
     from weilink._banner import display_startup_banner
@@ -218,6 +260,35 @@ def main(argv: list[str] | None = None) -> None:
         help="suppress the ASCII banner on startup",
     )
 
+    # ── migrate subcommand ─────────────────────────────────────────
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Migrate credentials from another tool.",
+    )
+    migrate_sub = migrate_parser.add_subparsers(dest="migrate_source", required=True)
+
+    oc_parser = migrate_sub.add_parser(
+        "openclaw",
+        help="Migrate from OpenClaw weixin plugin (@tencent-weixin/openclaw-weixin).",
+    )
+    oc_parser.add_argument(
+        "--source",
+        default=None,
+        help="OpenClaw state directory (default: ~/.openclaw)",
+    )
+    oc_parser.add_argument(
+        "--base-path",
+        "-d",
+        default=None,
+        help="weilink data directory (default: ~/.weilink/)",
+    )
+    oc_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help="show what would be migrated without writing files",
+    )
+
     # ── mcp subcommand ────────────────────────────────────────────
     mcp_parser = subparsers.add_parser(
         "mcp",
@@ -276,6 +347,8 @@ def main(argv: list[str] | None = None) -> None:
 
     if args.command == "admin":
         _run_admin(args)
+    elif args.command == "migrate":
+        _run_migrate(args)
     elif args.command == "openapi":
         _run_openapi(args)
     elif args.command == "mcp":
