@@ -50,6 +50,7 @@ class _Session:
     user_first_seen: dict[str, float] = field(default_factory=dict)
     typing_tickets: dict[str, str] = field(default_factory=dict)
     created_at: float | None = None
+    longpoll_timeout: float | None = None
 
     @property
     def contexts_path(self) -> Path:
@@ -774,12 +775,14 @@ class WeiLink:
         """Long-poll a single session for messages."""
         assert session.bot_info is not None
 
+        # Use server-provided timeout if available
+        poll_timeout = session.longpoll_timeout or timeout
         try:
             resp = proto.get_updates(
                 cursor=session.cursor,
                 token=session.bot_info.token,
                 base_url=session.bot_info.base_url,
-                timeout=timeout + 5,
+                timeout=poll_timeout + 5,
             )
         except proto.SessionExpiredError:
             # Clear cursor and context tokens per protocol spec §9.2
@@ -797,6 +800,11 @@ class WeiLink:
         if new_cursor:
             session.cursor = new_cursor
             self._save_session_state(session)
+
+        # Update client-side timeout if server provides one
+        lp_ms = resp.get("longpolling_timeout_ms")
+        if lp_ms is not None and isinstance(lp_ms, (int, float)) and lp_ms > 0:
+            session.longpoll_timeout = lp_ms / 1000.0
 
         context_changed = False
         messages: list[Message] = []
