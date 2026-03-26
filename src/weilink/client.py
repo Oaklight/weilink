@@ -771,6 +771,14 @@ class WeiLink:
                 base_url=session.bot_info.base_url,
                 timeout=timeout + 5,
             )
+        except proto.SessionExpiredError:
+            # Clear cursor and context tokens per protocol spec §9.2
+            session.cursor = ""
+            session.context_tokens.clear()
+            session.context_timestamps.clear()
+            self._save_session_state(session)
+            self._save_session_contexts(session)
+            raise
         except (TimeoutError, OSError):
             # HTTP timeout — no messages arrived within the window
             return []
