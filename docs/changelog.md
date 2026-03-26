@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **Send quota tracking** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK tracks per-user send count against the 10-message context_token quota; raises `QuotaExhaustedError` when exhausted; `SendResult.remaining` shows the countdown
+- **`TextTooLongError`** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — `send()` raises `TextTooLongError` with actual byte length when text exceeds the 16 KiB UTF-8 limit, instead of silently splitting
+- **`BotInfo.user_id`** ([`3772776`](https://github.com/Oaklight/weilink/commit/3772776)) — login now captures the WeChat user ID that authorized the bot; accessible via `Session.user_id`
+- **Additional model fields** ([`a2759bc`](https://github.com/Oaklight/weilink/commit/a2759bc)) — `ImageInfo.hd_size`, `VoiceInfo.encode_type` / `bits_per_sample` / `sample_rate`
+- **Session expiry recovery** ([`b44181b`](https://github.com/Oaklight/weilink/commit/b44181b)) — automatically clears cursor and context tokens on `errcode: -14`, so re-login can start fresh
+- **Recv robustness** ([`c000f8a`](https://github.com/Oaklight/weilink/commit/c000f8a), [`ddcb0f0`](https://github.com/Oaklight/weilink/commit/ddcb0f0)) — retry backoff on consecutive `recv()` failures; honors server-provided `longpolling_timeout_ms`
+
 ## v0.3.0 (2026-03-25)
 
 ### New Features
