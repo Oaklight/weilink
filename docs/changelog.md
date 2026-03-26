@@ -1,5 +1,16 @@
 # 更新日志
 
+## 未发布
+
+### 新功能
+
+- **发送配额跟踪** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK 自动跟踪每用户发送计数（10 条 context_token 配额）；配额耗尽时抛出 `QuotaExhaustedError`；`SendResult.remaining` 显示剩余可发送条数
+- **`TextTooLongError`** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — 文本超过 16 KiB UTF-8 限制时，`send()` 抛出 `TextTooLongError` 并报告实际字节数，而非静默拆分
+- **`BotInfo.user_id`** ([`3772776`](https://github.com/Oaklight/weilink/commit/3772776)) — 登录时捕获授权 bot 的微信用户 ID；可通过 `Session.user_id` 访问
+- **新增模型字段** ([`a2759bc`](https://github.com/Oaklight/weilink/commit/a2759bc)) — `ImageInfo.hd_size`、`VoiceInfo.encode_type` / `bits_per_sample` / `sample_rate`
+- **会话过期自动恢复** ([`b44181b`](https://github.com/Oaklight/weilink/commit/b44181b)) — 收到 `errcode: -14` 时自动清除 cursor 和 context token，确保重新登录可从干净状态开始
+- **消息接收增强** ([`c000f8a`](https://github.com/Oaklight/weilink/commit/c000f8a), [`ddcb0f0`](https://github.com/Oaklight/weilink/commit/ddcb0f0)) — 连续 `recv()` 失败时自动退避重试；支持服务端返回的 `longpolling_timeout_ms`
+
 ## v0.3.0 (2026-03-25)
 
 ### 新功能
