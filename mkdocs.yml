@@ -97,6 +97,7 @@ nav:
       - Models: api/models.md
   - Examples:
       - Simple Echo: examples/simple_echo.md
+      - Callback Echo: examples/callback_echo.md
       - AI Echo Bot: examples/echo_bot.md
       - Media Echo: examples/media_echo.md
       - Multi-Session Echo: examples/multi_echo.md

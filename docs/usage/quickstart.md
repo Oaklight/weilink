@@ -23,6 +23,27 @@ for msg in messages:
 
 `recv()` blocks for up to 35 seconds (long-polling).
 
+## Callback Mode
+
+Instead of a manual `recv()` loop, you can register handlers and let the SDK poll for you:
+
+```python
+@wl.on_message
+def handle(msg):
+    print(f"{msg.from_user}: {msg.text}")
+    wl.send(msg.from_user, "Got it!")
+
+wl.run_forever()  # blocks until Ctrl+C
+```
+
+Use `run_background()` if you need the main thread for other work:
+
+```python
+wl.run_background()
+# ... do other things ...
+wl.stop()
+```
+
 ## Send Messages
 
 ```python
