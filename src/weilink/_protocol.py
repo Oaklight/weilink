@@ -207,6 +207,46 @@ def get_updates(
     return post(EP_GET_UPDATES, body, token, base_url, timeout=timeout)
 
 
+_TEXT_BYTE_LIMIT = 16384  # 16 KiB UTF-8, server rejects texts above this
+
+
+def _split_text(text: str, byte_limit: int = _TEXT_BYTE_LIMIT) -> list[str]:
+    """Split text so each chunk stays within *byte_limit* UTF-8 bytes.
+
+    Prefers splitting at paragraph breaks (``\\n\\n``), then line breaks
+    (``\\n``), then spaces, falling back to a hard cut.  The limit is
+    measured in UTF-8 bytes (server enforces 16 384 bytes per text item).
+    """
+    if len(text.encode("utf-8")) <= byte_limit:
+        return [text]
+
+    chunks: list[str] = []
+    while text:
+        if len(text.encode("utf-8")) <= byte_limit:
+            chunks.append(text)
+            break
+
+        # Find the largest character prefix that fits in byte_limit.
+        # Start with a rough char estimate (1-3 bytes per char on average).
+        hi = min(len(text), byte_limit)
+        while len(text[:hi].encode("utf-8")) > byte_limit:
+            hi = hi * byte_limit // len(text[:hi].encode("utf-8"))
+
+        window = text[:hi]
+        # Try paragraph break, line break, space — in order
+        cut = window.rfind("\n\n")
+        if cut == -1:
+            cut = window.rfind("\n")
+        if cut == -1:
+            cut = window.rfind(" ")
+        if cut <= 0:
+            cut = hi  # hard cut
+
+        chunks.append(text[:cut])
+        text = text[cut:].lstrip("\n")
+    return chunks
+
+
 def send_message(
     to_user: str,
     text: str,
@@ -216,6 +256,9 @@ def send_message(
 ) -> dict[str, Any]:
     """Send a text message.
 
+    Long messages are automatically split into chunks of at most 16 KiB
+    UTF-8, each sent as a separate request with its own ``client_id``.
+
     Args:
         to_user: Target user ID (xxx@im.wechat).
         text: Message text.
@@ -223,20 +266,24 @@ def send_message(
         token: Bot bearer token.
         base_url: API base URL.
     """
-    client_id = f"weilink:{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
-    body = {
-        "msg": {
-            "from_user_id": "",
-            "to_user_id": to_user,
-            "client_id": client_id,
-            "message_type": 2,  # BOT
-            "message_state": 2,  # FINISH
-            "context_token": context_token,
-            "item_list": [{"type": 1, "text_item": {"text": text}}],
-        },
-        "base_info": {"channel_version": CHANNEL_VERSION},
-    }
-    return post(EP_SEND_MESSAGE, body, token, base_url, timeout=10.0)
+    chunks = _split_text(text)
+    result: dict[str, Any] = {}
+    for chunk in chunks:
+        client_id = f"weilink:{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}"
+        body = {
+            "msg": {
+                "from_user_id": "",
+                "to_user_id": to_user,
+                "client_id": client_id,
+                "message_type": 2,  # BOT
+                "message_state": 2,  # FINISH
+                "context_token": context_token,
+                "item_list": [{"type": 1, "text_item": {"text": chunk}}],
+            },
+            "base_info": {"channel_version": CHANNEL_VERSION},
+        }
+        result = post(EP_SEND_MESSAGE, body, token, base_url, timeout=10.0)
+    return result
 
 
 def get_config(
