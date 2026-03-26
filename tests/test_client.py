@@ -1153,3 +1153,166 @@ class TestCreatedAt:
             wl._save_state()
             second_ts = json.loads(token_path.read_text())["created_at"]
             assert first_ts == second_ts
+
+
+# ------------------------------------------------------------------
+# Callback / dispatcher tests
+# ------------------------------------------------------------------
+
+
+class TestOnMessage:
+    def test_decorator(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+
+            @wl.on_message
+            def handler(msg):
+                pass
+
+            assert handler in wl._message_handlers
+            assert len(wl._message_handlers) == 1
+
+    def test_returns_original_function(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+
+            def my_handler(msg):
+                pass
+
+            result = wl.on_message(my_handler)
+            assert result is my_handler
+
+    def test_direct_call(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+
+            def handler_a(msg):
+                pass
+
+            def handler_b(msg):
+                pass
+
+            wl.on_message(handler_a)
+            wl.on_message(handler_b)
+            assert wl._message_handlers == [handler_a, handler_b]
+
+
+class TestDispatcher:
+    """Tests for run_background / stop / recv-from-queue."""
+
+    def _make_wl_with_fake_recv(self, tmpdir, messages):
+        """Create a WeiLink with _recv_direct overridden to return canned messages."""
+
+        token_path = Path(tmpdir) / "token.json"
+        wl = WeiLink(token_path=token_path)
+
+        call_count = [0]
+
+        def fake_recv(timeout=35.0):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return list(messages)
+            # Subsequent calls: block briefly then return empty
+            time.sleep(0.5)
+            return []
+
+        wl._recv_direct = fake_recv
+        return wl
+
+    def test_run_background_and_stop(self):
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="hello", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            wl.run_background()
+            assert wl._dispatcher_thread is not None
+            assert wl._dispatcher_thread.is_alive()
+
+            wl.stop()
+            assert wl._dispatcher_thread is None
+
+    def test_recv_reads_from_queue(self):
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [
+                Message(from_user="a@im.wechat", text="msg1", message_id=1),
+                Message(from_user="b@im.wechat", text="msg2", message_id=2),
+            ]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            wl.run_background()
+            # Give dispatcher time to poll
+            time.sleep(1.0)
+
+            received = wl.recv(timeout=2.0)
+            assert len(received) == 2
+            assert received[0].text == "msg1"
+            assert received[1].text == "msg2"
+
+            wl.stop()
+
+    def test_handler_called(self):
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="hi", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            received = []
+
+            @wl.on_message
+            def handler(msg):
+                received.append(msg)
+
+            wl.run_background()
+            time.sleep(1.0)
+            wl.stop()
+
+            assert len(received) == 1
+            assert received[0].text == "hi"
+
+    def test_handler_exception_does_not_crash(self):
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="boom", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            ok_received = []
+
+            @wl.on_message
+            def bad_handler(msg):
+                raise ValueError("intentional error")
+
+            @wl.on_message
+            def good_handler(msg):
+                ok_received.append(msg)
+
+            wl.run_background()
+            time.sleep(1.0)
+            wl.stop()
+
+            # Good handler still got called despite bad handler raising
+            assert len(ok_received) == 1
+
+    def test_stop_without_start(self):
+        """stop() on a non-started dispatcher should be a no-op."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            wl.stop()  # Should not raise
+
+    def test_close_stops_dispatcher(self):
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="x", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            wl.run_background()
+            assert wl._dispatcher_thread.is_alive()
+
+            wl.close()
+            assert wl._dispatcher_thread is None

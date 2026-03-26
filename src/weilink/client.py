@@ -5,12 +5,16 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import queue
+import signal
+import threading
 import time
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 from weilink import _protocol as proto
 from weilink.models import (
@@ -205,6 +209,10 @@ class WeiLink:
 
         self._sessions: dict[str, _Session] = {}
         self._admin_server: Any = None
+        self._message_handlers: list[Callable[[Message], None]] = []
+        self._message_queue: queue.Queue[Message] = queue.Queue(maxsize=1000)
+        self._dispatcher_thread: threading.Thread | None = None
+        self._dispatcher_stop = threading.Event()
 
         # Auto-discover named sessions from disk first
         named: list[_Session] = []
@@ -731,6 +739,10 @@ class WeiLink:
     def recv(self, timeout: float = 35.0) -> list[Message]:
         """Receive pending messages via long-polling.
 
+        When the dispatcher is running (via :meth:`run_forever` or
+        :meth:`run_background`), messages are read from an internal queue
+        instead of polling iLink directly.  This avoids cursor conflicts.
+
         When multiple sessions are active, polls all sessions concurrently
         and merges results.  Each returned ``Message`` has ``bot_id``
         populated so the caller knows which session received it.
@@ -742,9 +754,38 @@ class WeiLink:
             List of received messages (may be empty on timeout).
 
         Raises:
-            RuntimeError: If not logged in.
+            RuntimeError: If not logged in (only when dispatcher is not
+                running).
             SessionExpiredError: If session has expired (re-login needed).
         """
+        if self._dispatcher_thread is not None and self._dispatcher_thread.is_alive():
+            return self._recv_from_queue(timeout)
+        return self._recv_direct(timeout)
+
+    def _recv_from_queue(self, timeout: float) -> list[Message]:
+        """Drain messages from the internal queue."""
+        messages: list[Message] = []
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                msg = self._message_queue.get(timeout=min(remaining, 1.0))
+                messages.append(msg)
+                # Drain any immediately available messages
+                while True:
+                    try:
+                        messages.append(self._message_queue.get_nowait())
+                    except queue.Empty:
+                        break
+                break
+            except queue.Empty:
+                continue
+        return messages
+
+    def _recv_direct(self, timeout: float = 35.0) -> list[Message]:
+        """Long-poll iLink directly for messages."""
         active = [s for s in self._sessions.values() if s.bot_info]
         if not active:
             raise RuntimeError("Not logged in. Call login() first.")
@@ -1233,6 +1274,133 @@ class WeiLink:
         return uploaded
 
     # ------------------------------------------------------------------
+    # Callback / dispatcher
+    # ------------------------------------------------------------------
+
+    def on_message(
+        self, handler: Callable[[Message], None]
+    ) -> Callable[[Message], None]:
+        """Register a message handler.
+
+        Can be used as a decorator or called directly::
+
+            @wl.on_message
+            def handle(msg):
+                print(msg.text)
+
+            # or
+            wl.on_message(some_function)
+
+        Args:
+            handler: Callable that accepts a Message.
+
+        Returns:
+            The handler unchanged (for decorator usage).
+        """
+        self._message_handlers.append(handler)
+        return handler
+
+    def run_forever(self, poll_timeout: float = 35.0) -> None:
+        """Start the dispatcher and block until :meth:`stop` is called.
+
+        Installs SIGINT/SIGTERM handlers so ``Ctrl+C`` triggers a
+        graceful shutdown.  Calls :meth:`close` before returning.
+
+        Args:
+            poll_timeout: Timeout per recv poll cycle in seconds.
+        """
+        self._start_dispatcher(poll_timeout)
+
+        prev_sigint = signal.getsignal(signal.SIGINT)
+        prev_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def _shutdown(signum: int, frame: Any) -> None:
+            self.stop()
+
+        signal.signal(signal.SIGINT, _shutdown)
+        signal.signal(signal.SIGTERM, _shutdown)
+
+        try:
+            self._dispatcher_stop.wait()
+        finally:
+            signal.signal(signal.SIGINT, prev_sigint)
+            signal.signal(signal.SIGTERM, prev_sigterm)
+            self.close()
+
+    def run_background(self, poll_timeout: float = 35.0) -> None:
+        """Start the dispatcher in the background without blocking.
+
+        Messages are dispatched to registered handlers and buffered in
+        an internal queue.  Call :meth:`recv` to read from the queue,
+        or use :meth:`on_message` to register handlers.
+
+        Args:
+            poll_timeout: Timeout per recv poll cycle in seconds.
+        """
+        self._start_dispatcher(poll_timeout)
+
+    def stop(self) -> None:
+        """Stop the dispatcher if running."""
+        if self._dispatcher_thread is None:
+            return
+        self._dispatcher_stop.set()
+        self._dispatcher_thread.join(timeout=10.0)
+        self._dispatcher_thread = None
+        self._dispatcher_stop.clear()
+
+    def _start_dispatcher(self, poll_timeout: float) -> None:
+        """Start the background polling thread if not already running."""
+        if self._dispatcher_thread is not None and self._dispatcher_thread.is_alive():
+            return
+        self._dispatcher_stop.clear()
+        self._dispatcher_thread = threading.Thread(
+            target=self._poll_loop,
+            args=(poll_timeout,),
+            daemon=True,
+        )
+        self._dispatcher_thread.start()
+
+    def _poll_loop(self, poll_timeout: float) -> None:
+        """Background loop: poll iLink and dispatch to handlers + queue."""
+        while not self._dispatcher_stop.is_set():
+            try:
+                messages = self._recv_direct(timeout=poll_timeout)
+            except proto.SessionExpiredError:
+                logger.error("Session expired, dispatcher stopping")
+                break
+            except RuntimeError:
+                # Not logged in yet — wait briefly and retry
+                if self._dispatcher_stop.wait(timeout=2.0):
+                    break
+                continue
+            except Exception:
+                logger.exception("Polling error in dispatcher")
+                continue
+
+            for msg in messages:
+                # Dispatch to handlers
+                for handler in self._message_handlers:
+                    try:
+                        handler(msg)
+                    except Exception:
+                        logger.exception(
+                            "Handler %s raised an exception",
+                            getattr(handler, "__name__", handler),
+                        )
+
+                # Enqueue for recv() consumers, drop oldest on overflow
+                try:
+                    self._message_queue.put_nowait(msg)
+                except queue.Full:
+                    try:
+                        self._message_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    self._message_queue.put_nowait(msg)
+
+        self._dispatcher_stop.set()
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -1261,6 +1429,7 @@ class WeiLink:
 
     def close(self) -> None:
         """Save state for all sessions and clean up."""
+        self.stop()
         self.stop_admin()
         for session in self._sessions.values():
             self._save_session_state(session)
