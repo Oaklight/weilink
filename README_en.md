@@ -98,6 +98,10 @@ weilink admin -p 8080
 - Terminal QR code rendering based on [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) (MIT License)
 - AES-128 cipher core derived from [bozhu/AES-Python](https://github.com/bozhu/AES-Python) (MIT License), rewritten for Python 3 with ECB mode and PKCS7 padding added
 
+## Community
+
+Feel free to discuss the project via [GitHub Issues](https://github.com/Oaklight/weilink/issues) or the [LINUX DO](https://linux.do/) community.
+
 ## License
 
 [MIT](LICENSE)

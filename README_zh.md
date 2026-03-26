@@ -98,6 +98,10 @@ weilink admin -p 8080
 - QR 码终端渲染基于 [nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator)（MIT 许可）
 - AES-128 密码核心源自 [bozhu/AES-Python](https://github.com/bozhu/AES-Python)（MIT 许可），已重写为 Python 3 并新增 ECB 模式和 PKCS7 填充
 
+## 社区
+
+欢迎通过 [GitHub Issues](https://github.com/Oaklight/weilink/issues) 或 [LINUX DO](https://linux.do/) 社区参与项目讨论。
+
 ## License
 
 [MIT](LICENSE)
