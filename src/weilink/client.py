@@ -834,11 +834,36 @@ class WeiLink:
         context_changed = False
         messages: list[Message] = []
         for raw_msg in resp.get("msgs", []):
-            if raw_msg.get("message_type") != 1:
+            msg_type = raw_msg.get("message_type")
+            logger.debug(
+                "Raw message: message_type=%s, keys=%s",
+                msg_type,
+                list(raw_msg.keys()),
+            )
+            # Dump full item_list for all messages
+            for i, item in enumerate(raw_msg.get("item_list", [])):
+                logger.debug(
+                    "  item[%d] full: %s",
+                    i,
+                    json.dumps(item, ensure_ascii=False, default=str),
+                )
+            if msg_type != 1:
+                logger.debug(
+                    "Skipping message_type=%s, full raw: %s",
+                    msg_type,
+                    json.dumps(raw_msg, ensure_ascii=False, default=str),
+                )
                 continue
 
             msg = self._parse_message(raw_msg, bot_id=session.bot_info.bot_id)
             if msg:
+                # Log parsed result
+                logger.debug(
+                    "Parsed message: type=%s, text=%r, from=%s",
+                    msg.msg_type.name,
+                    msg.text[:50] if msg.text else None,
+                    msg.from_user,
+                )
                 if msg.context_token:
                     old_token = session.context_tokens.get(msg.from_user)
                     session.context_tokens[msg.from_user] = msg.context_token
@@ -1303,6 +1328,12 @@ class WeiLink:
                 file = self._parse_file_item(first["file_item"])
             elif item_type == 5 and first.get("video_item"):
                 video = self._parse_video_item(first["video_item"])
+            else:
+                logger.debug(
+                    "Unhandled item_type=%s in _parse_message, full item: %s",
+                    item_type,
+                    json.dumps(first, ensure_ascii=False, default=str),
+                )
 
         ref_msg: RefMessage | None = None
         if items:
