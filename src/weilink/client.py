@@ -1340,6 +1340,7 @@ class WeiLink:
             url=raw.get("url", ""),
             thumb_width=raw.get("thumb_width", 0),
             thumb_height=raw.get("thumb_height", 0),
+            hd_size=raw.get("hd_size", 0),
         )
 
     @classmethod
@@ -1350,6 +1351,9 @@ class WeiLink:
             media=media,
             playtime=raw.get("playtime", 0),
             text=raw.get("text", ""),
+            encode_type=raw.get("encode_type", 0),
+            bits_per_sample=raw.get("bits_per_sample", 0),
+            sample_rate=raw.get("sample_rate", 0),
         )
 
     @classmethod

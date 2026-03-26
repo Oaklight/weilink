@@ -123,12 +123,14 @@ class ImageInfo:
         url: Direct image URL (may be empty).
         thumb_width: Thumbnail width in pixels.
         thumb_height: Thumbnail height in pixels.
+        hd_size: HD image cipher size in bytes.
     """
 
     media: MediaInfo = field(default_factory=MediaInfo)
     url: str = ""
     thumb_width: int = 0
     thumb_height: int = 0
+    hd_size: int = 0
 
 
 @dataclass(frozen=True)
@@ -137,13 +139,19 @@ class VoiceInfo:
 
     Attributes:
         media: CDN media reference for the voice file.
-        playtime: Duration in seconds.
+        playtime: Duration in milliseconds.
         text: Voice-to-text transcription (may be empty).
+        encode_type: Audio codec (1=pcm, 2=adpcm, 4=speex, 5=amr, 6=silk, 7=mp3).
+        bits_per_sample: Bit depth.
+        sample_rate: Sample rate in Hz.
     """
 
     media: MediaInfo = field(default_factory=MediaInfo)
     playtime: int = 0
     text: str = ""
+    encode_type: int = 0
+    bits_per_sample: int = 0
+    sample_rate: int = 0
 
 
 @dataclass(frozen=True)
