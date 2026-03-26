@@ -1,9 +1,10 @@
 """Unified CLI for WeiLink.
 
-Provides ``admin`` and ``mcp`` subcommands::
+Provides ``admin``, ``mcp``, and ``openapi`` subcommands::
 
     weilink admin --host 0.0.0.0 -p 8080
     weilink mcp -t sse -p 8000 --admin-port 8080 -d /data/weilink
+    weilink openapi -p 8000
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ def _run_admin(args: argparse.Namespace) -> None:
 def _run_mcp(args: argparse.Namespace) -> None:
     """Start the MCP server, optionally with an admin panel."""
     from weilink._banner import display_startup_banner
-    from weilink.mcp.server import run_mcp
+    from weilink.server.app import run_mcp
 
     # Skip banner for stdio (stdout is the MCP protocol channel).
     no_banner = args.no_banner or args.transport == "stdio"
@@ -72,11 +73,11 @@ def _run_mcp(args: argparse.Namespace) -> None:
 
     # Optionally start admin panel in the same process.
     if args.admin_port is not None:
-        from weilink.mcp.server import _init_client
+        from weilink.server.app import _init_client
 
         _init_client(base_path)
 
-        from weilink.mcp.server import _wl
+        from weilink.server.app import _wl
 
         if _wl is not None:
             admin_info = _wl.start_admin(host=args.host, port=args.admin_port)
@@ -97,7 +98,7 @@ def _run_mcp(args: argparse.Namespace) -> None:
 def _run_openapi(args: argparse.Namespace) -> None:
     """Start the OpenAPI server, optionally with an admin panel."""
     from weilink._banner import display_startup_banner
-    from weilink.mcp.server import run_openapi
+    from weilink.server.app import run_openapi
 
     display_startup_banner(no_banner=args.no_banner)
 
@@ -105,11 +106,11 @@ def _run_openapi(args: argparse.Namespace) -> None:
 
     # Optionally start admin panel in the same process.
     if args.admin_port is not None:
-        from weilink.mcp.server import _init_client
+        from weilink.server.app import _init_client
 
         _init_client(base_path)
 
-        from weilink.mcp.server import _wl
+        from weilink.server.app import _wl
 
         if _wl is not None:
             admin_info = _wl.start_admin(host=args.host, port=args.admin_port)
