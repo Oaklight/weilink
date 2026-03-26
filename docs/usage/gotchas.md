@@ -7,7 +7,7 @@
 - **不能主动发起对话** — 用户必须先给 bot 发消息，bot 才能回复。bot 只能回复拥有有效 context_token 的用户。
 - **24 小时窗口** — 用户超过 24 小时未发消息，bot 发送的消息会被平台静默丢弃，不会返回错误。
 - **`ret: -14` = 登录过期** — bot 的登录凭证已过期，需要调用 `login(force=True)` 重新认证。
-- **`ret: -2` = 上下文无效** — 发送时使用的 context_token 已失效，需等待用户发送新消息。
+- **`ret: -2` = 请求被拒绝** — 可能原因：context_token 已过期、达到 10 条回复上限、或文本超过 16 KiB。需等待用户发送新消息以获取新 token。
 
 ## 媒体与 CDN
 
@@ -19,6 +19,8 @@
 
 ## 消息投递
 
+- **文本大小限制：16 KiB UTF-8** — 服务端拒绝超过 16 384 字节 UTF-8 编码的文本（`ret: -2`）。注意：限制是**字节长度**而非字符数 — 16 000 个 ASCII 字符可以发送，但 6 000 个中文字符（约 18 000 字节）则超限。SDK 会自动将超长文本拆分为多条消息。
+- **每个 context_token 最多回复 10 条** — 每个 context_token 允许最多发送 10 条出站消息，超出后 `send()` 返回 `ret: -2`。用户发送新消息后计数器重置（会签发新 token）。参见 [epiral/weixin-bot#3](https://github.com/epiral/weixin-bot/issues/3)。
 - **批量延迟到达** — 已观察到偶发情况：`send()` 返回成功，但消息在用户端延迟数分钟后批量送达。这是微信 / iLink 服务端的行为，不是 SDK 的 bug。使用 `auto_recv=True` 在发送前刷新 context token 可能在一定程度上缓解此问题。正在持续跟踪中（[#2](https://github.com/Oaklight/weilink/issues/2)）。
 
 ## Context Token
