@@ -51,6 +51,7 @@ class _Session:
     typing_tickets: dict[str, str] = field(default_factory=dict)
     created_at: float | None = None
     longpoll_timeout: float | None = None
+    consecutive_failures: int = 0
 
     @property
     def contexts_path(self) -> Path:
@@ -775,6 +776,18 @@ class WeiLink:
         """Long-poll a single session for messages."""
         assert session.bot_info is not None
 
+        # Backoff on consecutive failures (spec §4.4):
+        # 1-2 failures: wait 2s, 3+ failures: wait 30s
+        if session.consecutive_failures > 0:
+            backoff = 30.0 if session.consecutive_failures >= 3 else 2.0
+            logger.debug(
+                "Backoff %.0fs after %d consecutive failures (session=%s)",
+                backoff,
+                session.consecutive_failures,
+                session.name,
+            )
+            time.sleep(backoff)
+
         # Use server-provided timeout if available
         poll_timeout = session.longpoll_timeout or timeout
         try:
@@ -795,6 +808,11 @@ class WeiLink:
         except (TimeoutError, OSError):
             # HTTP timeout — no messages arrived within the window
             return []
+        except proto.ILinkError:
+            session.consecutive_failures += 1
+            raise
+
+        session.consecutive_failures = 0
 
         new_cursor = resp.get("get_updates_buf", "")
         if new_cursor:
