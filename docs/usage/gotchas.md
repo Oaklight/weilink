@@ -19,8 +19,8 @@
 
 ## 消息投递
 
-- **文本大小限制：16 KiB UTF-8** — 服务端拒绝超过 16 384 字节 UTF-8 编码的文本（`ret: -2`）。注意：限制是**字节长度**而非字符数 — 16 000 个 ASCII 字符可以发送，但 6 000 个中文字符（约 18 000 字节）则超限。SDK 会自动将超长文本拆分为多条消息。
-- **每个 context_token 最多回复 10 条** — 每个 context_token 允许最多发送 10 条出站消息，超出后 `send()` 返回 `ret: -2`。用户发送新消息后计数器重置（会签发新 token）。参见 [epiral/weixin-bot#3](https://github.com/epiral/weixin-bot/issues/3)。
+- **文本大小限制：16 KiB UTF-8** — 服务端拒绝超过 16 384 字节 UTF-8 编码的文本（`ret: -2`）。注意：限制是**字节长度**而非字符数 — 16 000 个 ASCII 字符可以发送，但 6 000 个中文字符（约 18 000 字节）则超限。SDK 在发送前会检查字节长度，超限时抛出 `TextTooLongError` 并报告实际字节数，由调用方自行截断或拆分。
+- **每个 context_token 最多回复 10 条** — 每个 context_token 允许最多发送 10 条出站消息（文本或媒体均计数）。SDK 会自动跟踪每个用户的发送计数，达到上限时抛出 `QuotaExhaustedError`。用户发送新消息后计数器重置（会签发新 token）。`SendResult.remaining` 显示当前 token 的剩余可发送条数。参见 [epiral/weixin-bot#3](https://github.com/epiral/weixin-bot/issues/3)。
 - **批量延迟到达** — 已观察到偶发情况：`send()` 返回成功，但消息在用户端延迟数分钟后批量送达。这是微信 / iLink 服务端的行为，不是 SDK 的 bug。使用 `auto_recv=True` 在发送前刷新 context token 可能在一定程度上缓解此问题。正在持续跟踪中（[#2](https://github.com/Oaklight/weilink/issues/2)）。
 
 ## Context Token
