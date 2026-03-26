@@ -90,6 +90,12 @@ class Session:
         return bi.bot_id if bi else None
 
     @property
+    def user_id(self) -> str | None:
+        """WeChat user ID that authorized the bot, or ``None``."""
+        bi = self._internal.bot_info
+        return bi.user_id if bi else None
+
+    @property
     def is_connected(self) -> bool:
         """Whether this session has valid credentials."""
         return self._internal.bot_info is not None
@@ -389,6 +395,7 @@ class WeiLink:
                 bot_id=data["bot_id"],
                 base_url=data["base_url"],
                 token=data["token"],
+                user_id=data.get("user_id", ""),
             )
             session.cursor = data.get("cursor", "")
             session.created_at = data.get("created_at")
@@ -418,6 +425,7 @@ class WeiLink:
             "bot_id": session.bot_info.bot_id,
             "base_url": session.bot_info.base_url,
             "token": session.bot_info.token,
+            "user_id": session.bot_info.user_id,
             "cursor": session.cursor,
             "created_at": session.created_at,
         }
@@ -675,11 +683,13 @@ class WeiLink:
                 bot_token = status_resp.get("bot_token", "")
                 base_url = status_resp.get("baseurl", proto.BASE_URL)
                 bot_id = status_resp.get("ilink_bot_id", "")
+                user_id = status_resp.get("ilink_user_id", "")
 
                 session.bot_info = BotInfo(
                     bot_id=bot_id,
                     base_url=base_url,
                     token=bot_token,
+                    user_id=user_id,
                 )
                 session.cursor = ""
                 self._save_session_state(session)

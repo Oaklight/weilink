@@ -380,6 +380,7 @@ async def check_login() -> str:
         bot_token = status_resp.get("bot_token", "")
         base_url = status_resp.get("baseurl", proto.BASE_URL)
         bot_id = status_resp.get("ilink_bot_id", "")
+        user_id = status_resp.get("ilink_user_id", "")
 
         # Use the public login API to properly initialize session state.
         # Since we already confirmed, calling login() would try to start
@@ -396,7 +397,9 @@ async def check_login() -> str:
             token_path = wl._base_path / name / "token.json"
             session = wl._create_session(name, token_path)
 
-        session.bot_info = BotInfo(bot_id=bot_id, base_url=base_url, token=bot_token)
+        session.bot_info = BotInfo(
+            bot_id=bot_id, base_url=base_url, token=bot_token, user_id=user_id
+        )
         session.cursor = ""
         wl._save_session_state(session)
 

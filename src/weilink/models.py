@@ -90,11 +90,13 @@ class BotInfo:
         bot_id: Bot identifier (xxx@im.bot).
         base_url: iLink API base URL.
         token: Bearer token for authentication.
+        user_id: WeChat user ID that authorized the bot (xxx@im.wechat).
     """
 
     bot_id: str
     base_url: str
     token: str
+    user_id: str = ""
 
 
 @dataclass(frozen=True)
