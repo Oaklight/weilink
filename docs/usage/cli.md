@@ -72,6 +72,9 @@ weilink migrate openclaw
 
 ## `weilink migrate`
 
+!!! warning "实验性功能"
+    此子命令为实验性功能，接口可能在未来版本中发生变化。
+
 从其他 iLink Bot 工具导入凭证，切换到 WeiLink 时无需重新扫码。
 
 ### `weilink migrate openclaw`
