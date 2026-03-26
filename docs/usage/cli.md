@@ -1,6 +1,6 @@
 # CLI 参考
 
-`weilink` 命令提供三个子命令，适用于不同的部署场景：
+`weilink` 命令提供部署、服务器管理和凭证迁移等子命令：
 
 ```bash
 # 仅管理面板
@@ -17,6 +17,9 @@ weilink openapi --host 0.0.0.0 -p 8000
 
 # OpenAPI 服务器 + 管理面板，同一进程
 weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080
+
+# 从 OpenClaw 迁移凭证
+weilink migrate openclaw
 ```
 
 ## 全局选项
@@ -66,6 +69,36 @@ weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080
 | `--admin-port` | 同时在此端口启动管理面板（共用 host） | *（不启用）* |
 | `--log-level` | 日志级别（`DEBUG`、`INFO`、`WARNING`、`ERROR`） | `INFO` |
 | `--no-banner` | 抑制启动时的 ASCII 横幅 | *（关闭）* |
+
+## `weilink migrate`
+
+从其他 iLink Bot 工具导入凭证，切换到 WeiLink 时无需重新扫码。
+
+### `weilink migrate openclaw`
+
+从 OpenClaw 微信插件（`@tencent-weixin/openclaw-weixin`）迁移会话。
+
+```bash
+# 预览将会迁移的内容
+weilink migrate openclaw --dry-run
+
+# 执行迁移（读取 ~/.openclaw，写入 ~/.weilink/）
+weilink migrate openclaw
+
+# 自定义路径
+weilink migrate openclaw --source /path/to/openclaw --base-path /path/to/weilink
+```
+
+| 选项 | 说明 | 默认值 |
+|------|------|--------|
+| `--source` | OpenClaw 状态目录 | `~/.openclaw` |
+| `-d, --base-path` | WeiLink 数据目录 | `~/.weilink/` |
+| `--dry-run` | 仅展示将要迁移的内容，不写入文件 | *（关闭）* |
+
+迁移会将每个 OpenClaw 账户转换为一个命名的 WeiLink 会话。已存在的会话不会被覆盖 — 如果同名会话已经存在，则跳过。
+
+!!! tip
+    迁移完成后，可通过 `weilink admin` 查看会话是否正确加载并已连接。
 
 ## 多 Profile
 

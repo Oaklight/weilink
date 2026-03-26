@@ -8,6 +8,7 @@
 
 ### 新功能
 
+- **凭证迁移 CLI** — `weilink migrate openclaw` 从 OpenClaw 微信插件（`@tencent-weixin/openclaw-weixin`）导入会话，无需重新扫码；支持 `--dry-run` 预览和 `--source` 自定义 OpenClaw 状态目录
 - **发送配额跟踪** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK 自动跟踪每用户发送计数（10 条 context_token 配额）；配额耗尽时抛出 `QuotaExhaustedError`；`SendResult.remaining` 显示剩余可发送条数
 - **`TextTooLongError`** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — 文本超过 16 KiB UTF-8 限制时，`send()` 抛出 `TextTooLongError` 并报告实际字节数，而非静默拆分
 - **`BotInfo.user_id`** ([`3772776`](https://github.com/Oaklight/weilink/commit/3772776)) — 登录时捕获授权 bot 的微信用户 ID；可通过 `Session.user_id` 访问
