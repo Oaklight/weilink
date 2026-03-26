@@ -2,6 +2,10 @@
 
 ## 未发布
 
+### 破坏性变更
+
+- **`weilink.mcp` 模块重命名为 `weilink.server`** — 内部服务器模块从 `weilink.mcp.server` 迁移至 `weilink.server.app`；请使用 `python -m weilink.server` 替代 `python -m weilink.mcp`；CLI 子命令（`weilink mcp`、`weilink openapi`、`weilink admin`）和安装 extras（`weilink[mcp]`、`weilink[server]`）保持不变
+
 ### 新功能
 
 - **发送配额跟踪** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK 自动跟踪每用户发送计数（10 条 context_token 配额）；配额耗尽时抛出 `QuotaExhaustedError`；`SendResult.remaining` 显示剩余可发送条数

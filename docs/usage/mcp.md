@@ -30,7 +30,7 @@ WeiLink MCP 服务器支持三种传输模式：**stdio**（默认）、**SSE** 
 weilink mcp
 
 # 或通过 Python 模块
-python -m weilink.mcp
+python -m weilink.server
 ```
 
 stdio 传输由 MCP 客户端（Claude Desktop、Cursor 等）启动，而非独立运行。
@@ -119,7 +119,7 @@ weilink mcp -t http -p 8000
   "mcpServers": {
     "weilink": {
       "command": "python",
-      "args": ["-m", "weilink.mcp"]
+      "args": ["-m", "weilink.server"]
     }
   }
 }
