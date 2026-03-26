@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- **Rename `weilink.mcp` module to `weilink.server`** — internal server module moved from `weilink.mcp.server` to `weilink.server.app`; use `python -m weilink.server` instead of `python -m weilink.mcp`; CLI subcommands (`weilink mcp`, `weilink openapi`, `weilink admin`) and install extras (`weilink[mcp]`, `weilink[server]`) are unchanged
+
 ### New Features
 
 - **Send quota tracking** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK tracks per-user send count against the 10-message context_token quota; raises `QuotaExhaustedError` when exhausted; `SendResult.remaining` shows the countdown

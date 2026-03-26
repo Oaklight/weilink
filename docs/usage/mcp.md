@@ -30,7 +30,7 @@ WeiLink MCP server supports three transports: **stdio** (default), **SSE**, and 
 weilink mcp
 
 # Or via Python module
-python -m weilink.mcp
+python -m weilink.server
 ```
 
 stdio transport is launched by an MCP client (Claude Desktop, Cursor, etc.) rather than run standalone.
@@ -119,7 +119,7 @@ Add to MCP settings:
   "mcpServers": {
     "weilink": {
       "command": "python",
-      "args": ["-m", "weilink.mcp"]
+      "args": ["-m", "weilink.server"]
     }
   }
 }

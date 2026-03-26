@@ -23,8 +23,8 @@ graph TB
         admin_stc["static.py<br/><i>HTML & locale loading</i>"]
     end
 
-    subgraph "weilink.mcp"
-        mcp_srv["server.py<br/><i>Tool definitions</i>"]
+    subgraph "weilink.server"
+        mcp_srv["app.py<br/><i>Tool definitions</i>"]
     end
 
     subgraph "toolregistry-server"
@@ -250,7 +250,7 @@ WeiLink uses [toolregistry-server](https://github.com/Oaklight/toolregistry) to 
 
 ```mermaid
 flowchart LR
-    subgraph "weilink.mcp.server"
+    subgraph "weilink.server.app"
         tools["Tool functions<br/>(recv, send, download, ...)"]
         registry["ToolRegistry"]
     end
@@ -270,7 +270,7 @@ flowchart LR
     openapi -->|"REST API"| client["HTTP Client"]
 ```
 
-Tools are defined once as async Python functions in `weilink.mcp.server`, registered into a `ToolRegistry`, and then served via either transport:
+Tools are defined once as async Python functions in `weilink.server.app`, registered into a `ToolRegistry`, and then served via either transport:
 
 - **`weilink mcp`** — creates an MCP server using `toolregistry_server.mcp`
 - **`weilink openapi`** — creates a FastAPI app using `toolregistry_server.openapi`
