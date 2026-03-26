@@ -97,6 +97,7 @@ nav:
       - 数据模型: api/models.md
   - 示例:
       - 简单回声: examples/simple_echo.md
+      - 回调回声: examples/callback_echo.md
       - AI 回声机器人: examples/echo_bot.md
       - 多媒体回声: examples/media_echo.md
       - 多会话回声: examples/multi_echo.md

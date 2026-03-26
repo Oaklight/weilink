@@ -23,6 +23,27 @@ for msg in messages:
 
 `recv()` 使用长轮询，最长阻塞 35 秒。
 
+## 回调模式
+
+除了手动 `recv()` 循环，你可以注册处理器，让 SDK 自动轮询：
+
+```python
+@wl.on_message
+def handle(msg):
+    print(f"{msg.from_user}: {msg.text}")
+    wl.send(msg.from_user, "收到！")
+
+wl.run_forever()  # 阻塞直到 Ctrl+C
+```
+
+如果主线程需要做其他事情，可以使用 `run_background()`：
+
+```python
+wl.run_background()
+# ... 执行其他操作 ...
+wl.stop()
+```
+
 ## 发送消息
 
 ```python
