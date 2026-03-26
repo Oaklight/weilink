@@ -1,4 +1,7 @@
-"""Migrate credentials from other iLink Bot tools to WeiLink."""
+"""Migrate credentials from other iLink Bot tools to WeiLink.
+
+.. note:: **Experimental** — This module's API may change in future releases.
+"""
 
 from __future__ import annotations
 

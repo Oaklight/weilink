@@ -263,7 +263,7 @@ def main(argv: list[str] | None = None) -> None:
     # ── migrate subcommand ─────────────────────────────────────────
     migrate_parser = subparsers.add_parser(
         "migrate",
-        help="Migrate credentials from another tool.",
+        help="[Experimental] Migrate credentials from another tool.",
     )
     migrate_sub = migrate_parser.add_subparsers(dest="migrate_source", required=True)
 
