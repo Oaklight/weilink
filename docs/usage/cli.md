@@ -72,6 +72,9 @@ Start the OpenAPI (REST) server. See [OpenAPI Server](openapi.md) for endpoint d
 
 ## `weilink migrate`
 
+!!! warning "Experimental"
+    This subcommand is experimental and its interface may change in future releases.
+
 Import credentials from another iLink Bot tool so you can switch to WeiLink without re-scanning the QR code.
 
 ### `weilink migrate openclaw`
