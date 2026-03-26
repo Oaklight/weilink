@@ -253,7 +253,10 @@ def get_config(
         context_token: Optional conversation context token.
         base_url: API base URL.
     """
-    body: dict[str, Any] = {"ilink_user_id": user_id}
+    body: dict[str, Any] = {
+        "ilink_user_id": user_id,
+        "base_info": {"channel_version": CHANNEL_VERSION},
+    }
     if context_token:
         body["context_token"] = context_token
     return post(EP_GET_CONFIG, body, token, base_url, timeout=10.0)
@@ -279,6 +282,7 @@ def send_typing(
         "ilink_user_id": user_id,
         "typing_ticket": typing_ticket,
         "status": status,
+        "base_info": {"channel_version": CHANNEL_VERSION},
     }
     return post(EP_SEND_TYPING, body, token, base_url, timeout=10.0)
 
