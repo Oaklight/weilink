@@ -47,6 +47,7 @@ class _Session:
     context_tokens: dict[str, str] = field(default_factory=dict)
     context_timestamps: dict[str, float] = field(default_factory=dict)
     send_timestamps: dict[str, float] = field(default_factory=dict)
+    send_counts: dict[str, int] = field(default_factory=dict)
     user_first_seen: dict[str, float] = field(default_factory=dict)
     typing_tickets: dict[str, str] = field(default_factory=dict)
     created_at: float | None = None
@@ -456,7 +457,10 @@ class WeiLink:
             if token and (now - ts) < expiry:
                 session.context_tokens[user_id] = token
                 session.context_timestamps[user_id] = ts
-            # Load send_timestamps and user_first_seen regardless of expiry
+            # Load send_counts, send_timestamps and user_first_seen
+            sc = entry.get("sc", 0)
+            if sc and token and (now - ts) < expiry:
+                session.send_counts[user_id] = sc
             send_ts = entry.get("send_ts", 0.0)
             if send_ts:
                 session.send_timestamps[user_id] = send_ts
@@ -481,6 +485,7 @@ class WeiLink:
         all_users = (
             set(session.context_tokens)
             | set(session.send_timestamps)
+            | set(session.send_counts)
             | set(session.user_first_seen)
         )
         data = {}
@@ -491,6 +496,8 @@ class WeiLink:
                 entry["ts"] = session.context_timestamps.get(user_id, 0.0)
             if user_id in session.send_timestamps:
                 entry["send_ts"] = session.send_timestamps[user_id]
+            if session.send_counts.get(user_id, 0):
+                entry["sc"] = session.send_counts[user_id]
             if user_id in session.user_first_seen:
                 entry["first_seen"] = session.user_first_seen[user_id]
             if entry:
@@ -833,8 +840,11 @@ class WeiLink:
             msg = self._parse_message(raw_msg, bot_id=session.bot_info.bot_id)
             if msg:
                 if msg.context_token:
+                    old_token = session.context_tokens.get(msg.from_user)
                     session.context_tokens[msg.from_user] = msg.context_token
                     session.context_timestamps[msg.from_user] = time.time()
+                    if msg.context_token != old_token:
+                        session.send_counts[msg.from_user] = 0
                     if msg.from_user not in session.user_first_seen:
                         session.user_first_seen[msg.from_user] = time.time()
                     context_changed = True
@@ -881,9 +891,13 @@ class WeiLink:
         the target user.  If multiple sessions have a token, the one with
         the most recent timestamp is used.
 
+        Each ``context_token`` allows at most 10 outbound messages (text
+        or media).  The returned ``SendResult.remaining`` shows how many
+        sends are left on the current token.
+
         Args:
             to: Target user ID (xxx@im.wechat).
-            text: Text message content.
+            text: Text message content.  Must be <= 16 KiB UTF-8.
             image: Image bytes/UploadedMedia, or list thereof.
             voice: Voice bytes/UploadedMedia, or list thereof.
             file: File bytes/UploadedMedia, or list thereof.
@@ -895,14 +909,17 @@ class WeiLink:
                 the caller may not have called ``recv()`` recently.
 
         Returns:
-            A SendResult with ``success`` flag and any ``messages``
-            received during auto-recv.  Evaluates to ``True``/``False``
-            for backward compatibility.
+            A SendResult with ``success`` flag, any ``messages``
+            received during auto-recv, and ``remaining`` quota count.
+            Evaluates to ``True``/``False`` for backward compatibility.
 
         Raises:
             RuntimeError: If not logged in.
             ValueError: If file bytes are provided without file_name,
                 or if file and file_name list lengths don't match.
+            QuotaExhaustedError: If the 10-message quota for the
+                current context_token is exhausted.
+            TextTooLongError: If text exceeds 16 KiB UTF-8 bytes.
         """
         recv_messages: list[Message] = []
         if auto_recv:
@@ -959,6 +976,31 @@ class WeiLink:
             logger.warning("No context_token for user %s, cannot send", to)
             return SendResult(success=False, messages=recv_messages)
 
+        # Quota check
+        sent = session.send_counts.get(to, 0)
+        remaining = proto.CONTEXT_TOKEN_QUOTA - sent
+        if remaining <= 0:
+            raise proto.QuotaExhaustedError(
+                ret=-2,
+                errmsg=(
+                    f"Context token quota exhausted ({proto.CONTEXT_TOKEN_QUOTA} "
+                    f"messages sent). Wait for the user to send a new message."
+                ),
+            )
+
+        # Text byte length check
+        if text:
+            text_bytes = len(text.encode("utf-8"))
+            if text_bytes > proto.TEXT_BYTE_LIMIT:
+                raise proto.TextTooLongError(
+                    ret=-2,
+                    errmsg=(
+                        f"Text is {text_bytes} UTF-8 bytes, exceeds the "
+                        f"{proto.TEXT_BYTE_LIMIT} byte limit. "
+                        f"Truncate or split before sending."
+                    ),
+                )
+
         all_ok = True
 
         # Send text
@@ -980,6 +1022,8 @@ class WeiLink:
                         resp.get("errmsg", ""),
                     )
                     all_ok = False
+                else:
+                    session.send_counts[to] = session.send_counts.get(to, 0) + 1
             except proto.ILinkError as e:
                 logger.error("Failed to send text to %s: %s", to, e)
                 all_ok = False
@@ -1010,13 +1054,23 @@ class WeiLink:
             send_queue.append((item, UploadMediaType.VIDEO, "video_item", ""))
 
         for item, media_type, item_key, fname in send_queue:
+            # Check quota before each media send
+            if session.send_counts.get(to, 0) >= proto.CONTEXT_TOKEN_QUOTA:
+                logger.warning(
+                    "Quota exhausted after %d sends, skipping remaining media",
+                    session.send_counts.get(to, 0),
+                )
+                all_ok = False
+                break
             if isinstance(item, UploadedMedia):
                 ok = self._send_uploaded(to, item, session=session)
             else:
                 ok = self._send_media(
                     to, item, media_type, item_key, file_name=fname, session=session
                 )
-            if not ok:
+            if ok:
+                session.send_counts[to] = session.send_counts.get(to, 0) + 1
+            else:
                 all_ok = False
 
         if not text and not send_queue:
@@ -1025,9 +1079,10 @@ class WeiLink:
 
         if all_ok:
             session.send_timestamps[to] = time.time()
-            self._save_session_contexts(session)
+        self._save_session_contexts(session)
 
-        return SendResult(success=all_ok, messages=recv_messages)
+        remaining = proto.CONTEXT_TOKEN_QUOTA - session.send_counts.get(to, 0)
+        return SendResult(success=all_ok, messages=recv_messages, remaining=remaining)
 
     # ------------------------------------------------------------------
     # Typing

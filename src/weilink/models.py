@@ -259,10 +259,13 @@ class SendResult:
         success: Whether all sends succeeded.
         messages: Messages received during auto-recv (empty when
             ``auto_recv=False``).
+        remaining: Number of outbound messages still available on the
+            current context_token (out of 10).  ``None`` if unknown.
     """
 
     success: bool
     messages: list[Message] = field(default_factory=list)
+    remaining: int | None = None
 
     def __bool__(self) -> bool:
         return self.success

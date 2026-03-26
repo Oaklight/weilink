@@ -2,6 +2,12 @@
 
 __version__ = "0.3.0"
 
+from weilink._protocol import (
+    ILinkError,
+    QuotaExhaustedError,
+    SessionExpiredError,
+    TextTooLongError,
+)
 from weilink.client import Session, WeiLink
 from weilink.models import (
     BotInfo,
@@ -19,7 +25,11 @@ from weilink.models import (
 )
 
 __all__ = [
+    "ILinkError",
+    "QuotaExhaustedError",
     "Session",
+    "SessionExpiredError",
+    "TextTooLongError",
     "WeiLink",
     "BotInfo",
     "FileInfo",
