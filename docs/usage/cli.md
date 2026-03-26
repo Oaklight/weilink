@@ -1,6 +1,6 @@
 # CLI Reference
 
-The `weilink` command provides three subcommands for different deployment scenarios:
+The `weilink` command provides subcommands for deployment, server management, and credential migration:
 
 ```bash
 # Admin panel only
@@ -17,6 +17,9 @@ weilink openapi --host 0.0.0.0 -p 8000
 
 # OpenAPI server + admin panel in one process
 weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080
+
+# Migrate credentials from OpenClaw
+weilink migrate openclaw
 ```
 
 ## Global Options
@@ -66,6 +69,36 @@ Start the OpenAPI (REST) server. See [OpenAPI Server](openapi.md) for endpoint d
 | `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 | `--no-banner` | Suppress the ASCII banner on startup | *(off)* |
+
+## `weilink migrate`
+
+Import credentials from another iLink Bot tool so you can switch to WeiLink without re-scanning the QR code.
+
+### `weilink migrate openclaw`
+
+Migrate sessions from the OpenClaw weixin plugin (`@tencent-weixin/openclaw-weixin`).
+
+```bash
+# Preview what will be migrated
+weilink migrate openclaw --dry-run
+
+# Run the migration (reads ~/.openclaw, writes to ~/.weilink/)
+weilink migrate openclaw
+
+# Custom paths
+weilink migrate openclaw --source /path/to/openclaw --base-path /path/to/weilink
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--source` | OpenClaw state directory | `~/.openclaw` |
+| `-d, --base-path` | WeiLink data directory | `~/.weilink/` |
+| `--dry-run` | Show what would be migrated without writing files | *(off)* |
+
+The migration converts each OpenClaw account into a named WeiLink session. Existing sessions are never overwritten — if a session with the same name already exists, it is skipped.
+
+!!! tip
+    After migrating, verify with `weilink admin` that your sessions appear and are connected.
 
 ## Multiple Profiles
 

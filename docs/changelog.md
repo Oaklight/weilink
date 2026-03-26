@@ -8,6 +8,7 @@
 
 ### New Features
 
+- **Credential migration CLI** — `weilink migrate openclaw` imports sessions from the OpenClaw weixin plugin (`@tencent-weixin/openclaw-weixin`) without re-scanning the QR code; supports `--dry-run` and `--source` to customize the OpenClaw state directory
 - **Send quota tracking** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — SDK tracks per-user send count against the 10-message context_token quota; raises `QuotaExhaustedError` when exhausted; `SendResult.remaining` shows the countdown
 - **`TextTooLongError`** ([`58de18b`](https://github.com/Oaklight/weilink/commit/58de18b)) — `send()` raises `TextTooLongError` with actual byte length when text exceeds the 16 KiB UTF-8 limit, instead of silently splitting
 - **`BotInfo.user_id`** ([`3772776`](https://github.com/Oaklight/weilink/commit/3772776)) — login now captures the WeChat user ID that authorized the bot; accessible via `Session.user_id`
