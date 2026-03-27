@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.1 (2026-03-27)
+
+### Bug Fixes
+
+- **Fix session rename leaving stale directory** — add per-session `_io_lock` to serialize file I/O operations (rename, save, load, logout) on `_Session`; rename now uses `shutil.rmtree` instead of `rmdir` to force-clean the old directory; prevents race condition where a background thread could recreate the old directory between file move and path update
+
 ## v0.4.0 (2026-03-27)
 
 ### Breaking Changes
