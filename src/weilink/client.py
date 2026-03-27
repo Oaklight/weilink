@@ -57,6 +57,7 @@ class _Session:
     created_at: float | None = None
     longpoll_timeout: float | None = None
     consecutive_failures: int = 0
+    _io_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @property
     def contexts_path(self) -> Path:
@@ -311,28 +312,34 @@ class WeiLink:
             raise ValueError(f"Session {new_name!r} already exists")
 
         session = self._sessions.pop(old_name)
-        old_dir = session.token_path.parent
 
-        # Compute new path
-        new_dir = self._base_path / new_name
-        new_token_path = new_dir / "token.json"
+        # Hold the session's I/O lock so no background thread can read/write
+        # the old path while we move files and update token_path.
+        with session._io_lock:
+            old_dir = session.token_path.parent
 
-        # Move files on disk
-        new_dir.mkdir(parents=True, exist_ok=True)
-        for fname in ("token.json", "contexts.json"):
-            src = old_dir / fname
-            if src.exists():
-                src.rename(new_dir / fname)
-        # Clean up old directory if empty and not the base path
-        if old_dir != self._base_path and old_dir.exists():
-            try:
-                old_dir.rmdir()
-            except OSError:
-                pass  # not empty, leave it
+            # Compute new path
+            new_dir = self._base_path / new_name
+            new_token_path = new_dir / "token.json"
 
-        # Update session
-        session.name = new_name
-        session.token_path = new_token_path
+            # Move files on disk
+            new_dir.mkdir(parents=True, exist_ok=True)
+            for fname in ("token.json", "contexts.json"):
+                src = old_dir / fname
+                if src.exists():
+                    src.rename(new_dir / fname)
+
+            # Update session paths before releasing lock, so any waiting
+            # writer will use the new path.
+            session.name = new_name
+            session.token_path = new_token_path
+
+            # Force-remove old directory (shutil.rmtree handles non-empty)
+            if old_dir != self._base_path and old_dir.exists():
+                import shutil
+
+                shutil.rmtree(old_dir, ignore_errors=True)
+
         self._sessions[new_name] = session
 
         # Update default session persistence if this was the default
@@ -358,20 +365,21 @@ class WeiLink:
             raise ValueError(f"No session named {key!r}")
 
         session = self._sessions.pop(key)
-        session_dir = session.token_path.parent
+        with session._io_lock:
+            session_dir = session.token_path.parent
 
-        # Remove persisted files
-        for fname in ("token.json", "contexts.json"):
-            f = session_dir / fname
-            if f.exists():
-                f.unlink()
+            # Remove persisted files
+            for fname in ("token.json", "contexts.json"):
+                f = session_dir / fname
+                if f.exists():
+                    f.unlink()
 
-        # Remove directory if empty and not the base path
-        if session_dir != self._base_path and session_dir.exists():
-            try:
-                session_dir.rmdir()
-            except OSError:
-                pass
+            # Remove directory if empty and not the base path
+            if session_dir != self._base_path and session_dir.exists():
+                try:
+                    session_dir.rmdir()
+                except OSError:
+                    pass
 
         logger.info(
             "Logged out session %r (bot_id=%s)",
@@ -398,31 +406,34 @@ class WeiLink:
     @staticmethod
     def _load_session_state(session: _Session) -> None:
         """Load persisted bot credentials and cursor for a session."""
-        if not session.token_path.exists():
-            return
-        try:
-            data = json.loads(session.token_path.read_text())
-            session.bot_info = BotInfo(
-                bot_id=data["bot_id"],
-                base_url=data["base_url"],
-                token=data["token"],
-                user_id=data.get("user_id", ""),
-            )
-            session.cursor = data.get("cursor", "")
-            session.created_at = data.get("created_at")
-            if session.created_at is None:
-                # Legacy token without created_at: fall back to file mtime
-                try:
-                    session.created_at = session.token_path.stat().st_mtime
-                except OSError:
-                    pass
-            logger.debug(
-                "Loaded credentials for %s (session=%s)",
-                session.bot_info.bot_id,
-                session.name,
-            )
-        except (json.JSONDecodeError, KeyError) as e:
-            logger.warning("Failed to load state from %s: %s", session.token_path, e)
+        with session._io_lock:
+            if not session.token_path.exists():
+                return
+            try:
+                data = json.loads(session.token_path.read_text())
+                session.bot_info = BotInfo(
+                    bot_id=data["bot_id"],
+                    base_url=data["base_url"],
+                    token=data["token"],
+                    user_id=data.get("user_id", ""),
+                )
+                session.cursor = data.get("cursor", "")
+                session.created_at = data.get("created_at")
+                if session.created_at is None:
+                    # Legacy token without created_at: fall back to file mtime
+                    try:
+                        session.created_at = session.token_path.stat().st_mtime
+                    except OSError:
+                        pass
+                logger.debug(
+                    "Loaded credentials for %s (session=%s)",
+                    session.bot_info.bot_id,
+                    session.name,
+                )
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(
+                    "Failed to load state from %s: %s", session.token_path, e
+                )
 
     @staticmethod
     def _save_session_state(session: _Session) -> None:
@@ -431,29 +442,33 @@ class WeiLink:
             return
         if session.created_at is None:
             session.created_at = time.time()
-        session.token_path.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "bot_id": session.bot_info.bot_id,
-            "base_url": session.bot_info.base_url,
-            "token": session.bot_info.token,
-            "user_id": session.bot_info.user_id,
-            "cursor": session.cursor,
-            "created_at": session.created_at,
-        }
-        session.token_path.write_text(json.dumps(data, indent=2))
+        with session._io_lock:
+            session.token_path.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "bot_id": session.bot_info.bot_id,
+                "base_url": session.bot_info.base_url,
+                "token": session.bot_info.token,
+                "user_id": session.bot_info.user_id,
+                "cursor": session.cursor,
+                "created_at": session.created_at,
+            }
+            session.token_path.write_text(json.dumps(data, indent=2))
 
     @staticmethod
     def _load_session_contexts(session: _Session) -> None:
         """Load persisted context tokens for a session."""
-        if not session.contexts_path.exists():
-            return
-        try:
-            data = json.loads(session.contexts_path.read_text())
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning(
-                "Failed to load contexts from %s: %s", session.contexts_path, e
-            )
-            return
+        with session._io_lock:
+            if not session.contexts_path.exists():
+                return
+            try:
+                data = json.loads(session.contexts_path.read_text())
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(
+                    "Failed to load contexts from %s: %s",
+                    session.contexts_path,
+                    e,
+                )
+                return
 
         now = time.time()
         expiry = 24 * 3600
@@ -488,7 +503,6 @@ class WeiLink:
     @staticmethod
     def _save_session_contexts(session: _Session) -> None:
         """Persist context tokens for a session."""
-        session.token_path.parent.mkdir(parents=True, exist_ok=True)
         # Collect all known user IDs across tokens and timestamps
         all_users = (
             set(session.context_tokens)
@@ -510,7 +524,9 @@ class WeiLink:
                 entry["first_seen"] = session.user_first_seen[user_id]
             if entry:
                 data[user_id] = entry
-        session.contexts_path.write_text(json.dumps(data, indent=2))
+        with session._io_lock:
+            session.token_path.parent.mkdir(parents=True, exist_ok=True)
+            session.contexts_path.write_text(json.dumps(data, indent=2))
 
     # ------------------------------------------------------------------
     # Backward-compatible delegation
