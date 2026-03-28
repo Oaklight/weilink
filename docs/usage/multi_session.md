@@ -97,6 +97,9 @@ bot_a = WeiLink(base_path="~/.weilink-app-a")
 bot_b = WeiLink(base_path="~/.weilink-app-b")
 ```
 
+!!! info "跨进程安全"
+    多个进程共享同一基础路径时（例如 SDK 脚本和 stdio MCP 服务器），通过文件锁协调访问。同一时刻只有一个进程可以轮询消息，另一个的 `recv()` 返回空列表。两者均可并发 `send()`。详见 [架构 > 跨进程文件锁](../architecture.md#跨进程文件锁)。
+
 ## 向后兼容
 
 所有现有的单会话代码无需修改即可使用。`login()` 不传 `name` 时使用默认会话：

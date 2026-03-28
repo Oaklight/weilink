@@ -123,6 +123,45 @@ flowchart TD
     F --> G["send_message()"]
 ```
 
+## 跨进程文件锁
+
+当多个进程共享同一数据目录时（例如 SDK 脚本和 stdio MCP 服务器同时使用 `~/.weilink/`），WeiLink 通过两把基于 `fcntl.flock()` 的文件锁协调访问：
+
+```mermaid
+flowchart TD
+    subgraph "进程 A（SDK 脚本）"
+        A_recv["recv()"]
+        A_send["send()"]
+    end
+
+    subgraph "进程 B（MCP stdio）"
+        B_recv["recv()"]
+        B_send["send()"]
+    end
+
+    subgraph "~/.weilink/"
+        poll_lock[".poll.lock<br/><i>非阻塞排他锁</i>"]
+        data_lock[".data.lock<br/><i>阻塞排他锁（短暂持有）</i>"]
+        files["token.json<br/>contexts.json"]
+    end
+
+    A_recv -->|"try_lock"| poll_lock
+    B_recv -->|"try_lock（失败 → []）"| poll_lock
+    A_send -->|"lock"| data_lock
+    B_send -->|"lock"| data_lock
+    poll_lock -.-> files
+    data_lock -.-> files
+```
+
+| 锁 | 作用范围 | 行为 |
+|----|----------|------|
+| `.poll.lock` | 整个 `recv()` 周期 | 非阻塞 try-lock。被其他进程持有时，`recv()` 立即返回 `[]`。防止 cursor 分叉。 |
+| `.data.lock` | 文件读-改-写 | 阻塞式，短暂持有（~毫秒级）。序列化 `token.json` / `contexts.json` 的访问，`recv()` 和 `send()` 均使用。 |
+
+**核心原则：** 磁盘是唯一事实来源。每次 `recv()` 和 `send()` 在数据锁下重新从磁盘读取状态后再执行操作，确保其他进程的变更可见。
+
+在 Windows 上，文件锁被跳过（无 `fcntl`），WeiLink 的行为与之前一致。
+
 ## 二维码登录流程
 
 登录使用微信手机端扫描二维码完成。无论从终端还是管理面板发起，流程相同。

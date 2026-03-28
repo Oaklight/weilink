@@ -1,5 +1,11 @@
 # 更新日志
 
+## v0.4.2 (2026-03-28)
+
+### 新功能
+
+- **跨进程 profile 文件锁** ([#5](https://github.com/Oaklight/weilink/issues/5)) — 多个 WeiLink 实例共享同一数据目录（`~/.weilink/`）时，通过 `fcntl.flock()` 文件锁进行协调；非阻塞 **轮询锁**（`.poll.lock`）确保同一时刻只有一个进程轮询 iLink，短暂持有的 **数据锁**（`.data.lock`）序列化 `token.json` / `contexts.json` 的读-改-写操作；防止 cursor 分叉、send_count 覆盖和文件损坏
+
 ## v0.4.1 (2026-03-27)
 
 ### 问题修复
