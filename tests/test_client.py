@@ -1,9 +1,12 @@
 """Tests for WeiLink client."""
 
 import json
+import sys
 import tempfile
 import time
 from pathlib import Path
+
+import pytest
 
 from weilink.client import WeiLink
 from weilink.models import BotInfo, MessageType, UploadMediaType, UploadedMedia
@@ -1316,3 +1319,134 @@ class TestDispatcher:
 
             wl.close()
             assert wl._dispatcher_thread is None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="fcntl not available on Windows")
+class TestCrossProcessLocking:
+    """Tests for cross-process file locking behavior."""
+
+    def test_poll_lock_prevents_second_recv(self):
+        """Second WeiLink instance on same base_path cannot poll."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            # Create valid credentials so recv doesn't raise RuntimeError
+            token_data = {
+                "bot_id": "b@im.bot",
+                "base_url": "https://example.com",
+                "token": "tok",
+                "user_id": "u@im.wechat",
+                "cursor": "",
+            }
+            (base / "token.json").write_text(json.dumps(token_data))
+
+            wl_a = WeiLink(base_path=base)
+            wl_b = WeiLink(base_path=base)
+
+            # Simulate wl_a holding poll_lock
+            wl_a._poll_lock.lock()
+            try:
+                # wl_b._recv_session should return [] because poll_lock
+                # is already held by wl_a.
+                session_b = wl_b._default_session
+                result = wl_b._recv_session(session_b, timeout=1)
+                assert result == []
+            finally:
+                wl_a._poll_lock.unlock()
+                wl_a.close()
+                wl_b.close()
+
+    def test_data_lock_protects_contexts_file(self):
+        """data_lock serializes access to contexts.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            (base / "token.json").write_text(
+                json.dumps(
+                    {
+                        "bot_id": "b@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok",
+                        "user_id": "u@im.wechat",
+                        "cursor": "",
+                    }
+                )
+            )
+
+            wl_a = WeiLink(base_path=base)
+            wl_b = WeiLink(base_path=base)
+
+            # wl_a holds data_lock
+            assert wl_a._data_lock.try_lock() is True
+            # wl_b cannot acquire it
+            assert wl_b._data_lock.try_lock() is False
+
+            wl_a._data_lock.unlock()
+            # Now wl_b can acquire
+            assert wl_b._data_lock.try_lock() is True
+            wl_b._data_lock.unlock()
+
+            wl_a.close()
+            wl_b.close()
+
+    def test_send_reloads_contexts_from_disk(self):
+        """send() re-reads contexts from disk under data_lock."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            token_data = {
+                "bot_id": "b@im.bot",
+                "base_url": "https://example.com",
+                "token": "tok",
+                "user_id": "u@im.wechat",
+                "cursor": "",
+            }
+            (base / "token.json").write_text(json.dumps(token_data))
+
+            # Write contexts as if another process updated them
+            ctx_data = {
+                "user@im.wechat": {
+                    "t": "ctx_tok_1",
+                    "ts": time.time(),
+                    "sc": 5,
+                    "first_seen": time.time() - 100,
+                }
+            }
+            (base / "contexts.json").write_text(json.dumps(ctx_data))
+
+            wl = WeiLink(base_path=base)
+            session = wl._default_session
+
+            # Verify contexts loaded from disk
+            assert session.context_tokens.get("user@im.wechat") == "ctx_tok_1"
+            assert session.send_counts.get("user@im.wechat") == 5
+
+            # Simulate another process updating send_count on disk
+            ctx_data["user@im.wechat"]["sc"] = 8
+            (base / "contexts.json").write_text(json.dumps(ctx_data))
+
+            # Re-load should pick up the new count
+            wl._load_session_contexts(session)
+            assert session.send_counts.get("user@im.wechat") == 8
+
+            wl.close()
+
+    def test_close_releases_locks(self):
+        """close() releases both poll and data locks."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            wl_a = WeiLink(base_path=base)
+            wl_b = WeiLink(base_path=base)
+
+            wl_a._poll_lock.lock()
+            wl_a._data_lock.lock()
+
+            # Both locked
+            assert wl_b._poll_lock.try_lock() is False
+            assert wl_b._data_lock.try_lock() is False
+
+            wl_a.close()  # should release both
+
+            assert wl_b._poll_lock.try_lock() is True
+            wl_b._poll_lock.unlock()
+            assert wl_b._data_lock.try_lock() is True
+            wl_b._data_lock.unlock()
+
+            wl_b.close()

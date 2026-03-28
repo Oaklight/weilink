@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable
 
+from weilink._filelock import FileLock
 from weilink import _protocol as proto
 from weilink.models import (
     BotInfo,
@@ -215,6 +216,10 @@ class WeiLink:
         self._dispatcher_thread: threading.Thread | None = None
         self._dispatcher_stop = threading.Event()
 
+        # Cross-process file locks
+        self._poll_lock = FileLock(self._base_path / ".poll.lock")
+        self._data_lock = FileLock(self._base_path / ".data.lock")
+
         # Auto-discover named sessions from disk first
         named: list[_Session] = []
         if self._base_path.is_dir():
@@ -313,9 +318,10 @@ class WeiLink:
 
         session = self._sessions.pop(old_name)
 
-        # Hold the session's I/O lock so no background thread can read/write
-        # the old path while we move files and update token_path.
-        with session._io_lock:
+        # Hold both the cross-process data lock and the in-process I/O
+        # lock so no other process or thread can read/write the old path
+        # while we move files and update token_path.
+        with self._data_lock, session._io_lock:
             old_dir = session.token_path.parent
 
             # Compute new path
@@ -365,7 +371,7 @@ class WeiLink:
             raise ValueError(f"No session named {key!r}")
 
         session = self._sessions.pop(key)
-        with session._io_lock:
+        with self._data_lock, session._io_lock:
             session_dir = session.token_path.parent
 
             # Remove persisted files
@@ -527,6 +533,46 @@ class WeiLink:
         with session._io_lock:
             session.token_path.parent.mkdir(parents=True, exist_ok=True)
             session.contexts_path.write_text(json.dumps(data, indent=2))
+
+    @staticmethod
+    def _merge_contexts_from_disk(session: _Session, updated_users: set[str]) -> None:
+        """Re-read contexts from disk and merge with in-memory state.
+
+        For users in *updated_users* the in-memory state (new token from
+        recv) is authoritative.  For all other users the disk state is
+        authoritative (preserves send_counts from other processes).
+
+        Must be called with the data lock held.
+        """
+        if not session.contexts_path.exists():
+            return
+        try:
+            disk_data = json.loads(session.contexts_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return
+
+        now = time.time()
+        expiry = 24 * 3600
+        for user_id, entry in disk_data.items():
+            if user_id in updated_users:
+                # In-memory state is newer (just received fresh token)
+                continue
+            if not isinstance(entry, dict):
+                continue
+            token = entry.get("t", "")
+            ts = entry.get("ts", 0.0)
+            if token and (now - ts) < expiry:
+                session.context_tokens[user_id] = token
+                session.context_timestamps[user_id] = ts
+            sc = entry.get("sc", 0)
+            if sc and token and (now - ts) < expiry:
+                session.send_counts[user_id] = sc
+            send_ts = entry.get("send_ts", 0.0)
+            if send_ts:
+                session.send_timestamps[user_id] = send_ts
+            first_seen = entry.get("first_seen", 0.0)
+            if first_seen:
+                session.user_first_seen[user_id] = first_seen
 
     # ------------------------------------------------------------------
     # Backward-compatible delegation
@@ -725,7 +771,8 @@ class WeiLink:
                     user_id=user_id,
                 )
                 session.cursor = ""
-                self._save_session_state(session)
+                with self._data_lock:
+                    self._save_session_state(session)
                 print(f"\nLogin successful! Bot ID: {bot_id}")
                 return session.bot_info
 
@@ -840,6 +887,24 @@ class WeiLink:
         """Long-poll a single session for messages."""
         assert session.bot_info is not None
 
+        # Cross-process: only one process may poll at a time.
+        if not self._poll_lock.try_lock():
+            return []
+
+        try:
+            return self._recv_session_locked(session, timeout)
+        finally:
+            self._poll_lock.unlock()
+
+    def _recv_session_locked(self, session: _Session, timeout: float) -> list[Message]:
+        """Long-poll implementation, called with poll_lock held."""
+        assert session.bot_info is not None
+        # Re-read disk state so we pick up cursor/context changes from
+        # other processes (disk is the source of truth).
+        with self._data_lock:
+            self._load_session_state(session)
+            self._load_session_contexts(session)
+
         # Backoff on consecutive failures (spec §4.4):
         # 1-2 failures: wait 2s, 3+ failures: wait 30s
         if session.consecutive_failures > 0:
@@ -866,8 +931,9 @@ class WeiLink:
             session.cursor = ""
             session.context_tokens.clear()
             session.context_timestamps.clear()
-            self._save_session_state(session)
-            self._save_session_contexts(session)
+            with self._data_lock:
+                self._save_session_state(session)
+                self._save_session_contexts(session)
             raise
         except (TimeoutError, OSError):
             # HTTP timeout — no messages arrived within the window
@@ -878,17 +944,8 @@ class WeiLink:
 
         session.consecutive_failures = 0
 
-        new_cursor = resp.get("get_updates_buf", "")
-        if new_cursor:
-            session.cursor = new_cursor
-            self._save_session_state(session)
-
-        # Update client-side timeout if server provides one
-        lp_ms = resp.get("longpolling_timeout_ms")
-        if lp_ms is not None and isinstance(lp_ms, (int, float)) and lp_ms > 0:
-            session.longpoll_timeout = lp_ms / 1000.0
-
-        context_changed = False
+        # Parse messages and collect context token updates
+        users_with_new_token: set[str] = set()
         messages: list[Message] = []
         for raw_msg in resp.get("msgs", []):
             msg_type = raw_msg.get("message_type")
@@ -929,11 +986,26 @@ class WeiLink:
                         session.send_counts[msg.from_user] = 0
                     if msg.from_user not in session.user_first_seen:
                         session.user_first_seen[msg.from_user] = time.time()
-                    context_changed = True
+                    users_with_new_token.add(msg.from_user)
                 messages.append(msg)
 
-        if context_changed:
-            self._save_session_contexts(session)
+        # Merge with disk: re-read contexts, then overwrite only users
+        # that received new tokens.  This preserves send_counts updated
+        # by other processes for users NOT in this batch.
+        new_cursor = resp.get("get_updates_buf", "")
+        with self._data_lock:
+            if users_with_new_token:
+                self._merge_contexts_from_disk(session, users_with_new_token)
+            if new_cursor:
+                session.cursor = new_cursor
+            self._save_session_state(session)
+            if users_with_new_token:
+                self._save_session_contexts(session)
+
+        # Update client-side timeout if server provides one
+        lp_ms = resp.get("longpolling_timeout_ms")
+        if lp_ms is not None and isinstance(lp_ms, (int, float)) and lp_ms > 0:
+            session.longpoll_timeout = lp_ms / 1000.0
 
         return messages
 
@@ -1043,34 +1115,7 @@ class WeiLink:
                 if any(not fn for fn in fnames):
                     raise ValueError("file_name is required when sending a file")
 
-        # Find the right session
-        session = self._find_session_for_user(to)
-        if session is None or session.bot_info is None:
-            # Check if any session is connected
-            active = [s for s in self._sessions.values() if s.bot_info]
-            if not active:
-                raise RuntimeError("Not logged in. Call login() first.")
-            logger.warning("No context_token for user %s, cannot send", to)
-            return SendResult(success=False, messages=recv_messages)
-
-        ctx_token = session.context_tokens.get(to)
-        if not ctx_token:
-            logger.warning("No context_token for user %s, cannot send", to)
-            return SendResult(success=False, messages=recv_messages)
-
-        # Quota check
-        sent = session.send_counts.get(to, 0)
-        remaining = proto.CONTEXT_TOKEN_QUOTA - sent
-        if remaining <= 0:
-            raise proto.QuotaExhaustedError(
-                ret=-2,
-                errmsg=(
-                    f"Context token quota exhausted ({proto.CONTEXT_TOKEN_QUOTA} "
-                    f"messages sent). Wait for the user to send a new message."
-                ),
-            )
-
-        # Text byte length check
+        # Text byte length check (pure validation, no lock needed)
         if text:
             text_bytes = len(text.encode("utf-8"))
             if text_bytes > proto.TEXT_BYTE_LIMIT:
@@ -1083,34 +1128,7 @@ class WeiLink:
                     ),
                 )
 
-        all_ok = True
-
-        # Send text
-        if text:
-            try:
-                resp = proto.send_message(
-                    to_user=to,
-                    text=text,
-                    context_token=ctx_token,
-                    token=session.bot_info.token,
-                    base_url=session.bot_info.base_url,
-                )
-                ret = resp.get("ret", 0)
-                if ret != 0:
-                    logger.warning(
-                        "send text to %s returned ret=%s: %s",
-                        to,
-                        ret,
-                        resp.get("errmsg", ""),
-                    )
-                    all_ok = False
-                else:
-                    session.send_counts[to] = session.send_counts.get(to, 0) + 1
-            except proto.ILinkError as e:
-                logger.error("Failed to send text to %s: %s", to, e)
-                all_ok = False
-
-        # Build ordered send queue
+        # Build ordered send queue (pure computation, no lock needed)
         send_queue: list[tuple[bytes | UploadedMedia, UploadMediaType, str, str]] = []
         for item in images:
             send_queue.append((item, UploadMediaType.IMAGE, "image_item", ""))
@@ -1135,33 +1153,98 @@ class WeiLink:
         for item in videos:
             send_queue.append((item, UploadMediaType.VIDEO, "video_item", ""))
 
-        for item, media_type, item_key, fname in send_queue:
-            # Check quota before each media send
-            if session.send_counts.get(to, 0) >= proto.CONTEXT_TOKEN_QUOTA:
-                logger.warning(
-                    "Quota exhausted after %d sends, skipping remaining media",
-                    session.send_counts.get(to, 0),
-                )
-                all_ok = False
-                break
-            if isinstance(item, UploadedMedia):
-                ok = self._send_uploaded(to, item, session=session)
-            else:
-                ok = self._send_media(
-                    to, item, media_type, item_key, file_name=fname, session=session
-                )
-            if ok:
-                session.send_counts[to] = session.send_counts.get(to, 0) + 1
-            else:
-                all_ok = False
-
         if not text and not send_queue:
             logger.warning("send() called with no content")
             return SendResult(success=False, messages=recv_messages)
 
-        if all_ok:
-            session.send_timestamps[to] = time.time()
-        self._save_session_contexts(session)
+        # --- Core send cycle under data_lock ---
+        # Re-read contexts from disk so we use the latest token and
+        # send_count written by other processes.
+        with self._data_lock:
+            for s in self._sessions.values():
+                self._load_session_contexts(s)
+
+            session = self._find_session_for_user(to)
+            if session is None or session.bot_info is None:
+                active = [s for s in self._sessions.values() if s.bot_info]
+                if not active:
+                    raise RuntimeError("Not logged in. Call login() first.")
+                logger.warning("No context_token for user %s, cannot send", to)
+                return SendResult(success=False, messages=recv_messages)
+
+            ctx_token = session.context_tokens.get(to)
+            if not ctx_token:
+                logger.warning("No context_token for user %s, cannot send", to)
+                return SendResult(success=False, messages=recv_messages)
+
+            # Quota check with fresh send_count from disk
+            sent = session.send_counts.get(to, 0)
+            remaining = proto.CONTEXT_TOKEN_QUOTA - sent
+            if remaining <= 0:
+                raise proto.QuotaExhaustedError(
+                    ret=-2,
+                    errmsg=(
+                        f"Context token quota exhausted "
+                        f"({proto.CONTEXT_TOKEN_QUOTA} messages sent). "
+                        f"Wait for the user to send a new message."
+                    ),
+                )
+
+            all_ok = True
+
+            # Send text
+            if text:
+                try:
+                    resp = proto.send_message(
+                        to_user=to,
+                        text=text,
+                        context_token=ctx_token,
+                        token=session.bot_info.token,
+                        base_url=session.bot_info.base_url,
+                    )
+                    ret = resp.get("ret", 0)
+                    if ret != 0:
+                        logger.warning(
+                            "send text to %s returned ret=%s: %s",
+                            to,
+                            ret,
+                            resp.get("errmsg", ""),
+                        )
+                        all_ok = False
+                    else:
+                        session.send_counts[to] = session.send_counts.get(to, 0) + 1
+                except proto.ILinkError as e:
+                    logger.error("Failed to send text to %s: %s", to, e)
+                    all_ok = False
+
+            for item, media_type, item_key, fname in send_queue:
+                # Check quota before each media send
+                if session.send_counts.get(to, 0) >= proto.CONTEXT_TOKEN_QUOTA:
+                    logger.warning(
+                        "Quota exhausted after %d sends, skipping remaining media",
+                        session.send_counts.get(to, 0),
+                    )
+                    all_ok = False
+                    break
+                if isinstance(item, UploadedMedia):
+                    ok = self._send_uploaded(to, item, session=session)
+                else:
+                    ok = self._send_media(
+                        to,
+                        item,
+                        media_type,
+                        item_key,
+                        file_name=fname,
+                        session=session,
+                    )
+                if ok:
+                    session.send_counts[to] = session.send_counts.get(to, 0) + 1
+                else:
+                    all_ok = False
+
+            if all_ok:
+                session.send_timestamps[to] = time.time()
+            self._save_session_contexts(session)
 
         remaining = proto.CONTEXT_TOKEN_QUOTA - session.send_counts.get(to, 0)
         return SendResult(success=all_ok, messages=recv_messages, remaining=remaining)
@@ -1449,6 +1532,8 @@ class WeiLink:
         self.stop_admin()
         for session in self._sessions.values():
             self._save_session_state(session)
+        self._poll_lock.close()
+        self._data_lock.close()
 
     def __enter__(self) -> WeiLink:
         return self
