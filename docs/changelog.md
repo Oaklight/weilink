@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.2 (2026-03-28)
+
+### New Features
+
+- **Cross-process profile locking** ([#5](https://github.com/Oaklight/weilink/issues/5)) — multiple WeiLink instances sharing the same data directory (`~/.weilink/`) are now coordinated via `fcntl.flock()`-based file locks; a non-blocking **poll lock** (`.poll.lock`) ensures only one process polls iLink at a time, while a short-lived **data lock** (`.data.lock`) serializes read-modify-write cycles on `token.json` / `contexts.json`; prevents cursor divergence, send_count corruption, and file corruption across SDK scripts, stdio MCP, and admin panel processes
+
 ## v0.4.1 (2026-03-27)
 
 ### Bug Fixes

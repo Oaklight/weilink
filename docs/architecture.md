@@ -123,6 +123,45 @@ flowchart TD
     F --> G["send_message()"]
 ```
 
+## Cross-Process File Locking
+
+When multiple processes share the same data directory (e.g., an SDK script and a stdio MCP server both using `~/.weilink/`), WeiLink coordinates access using two `fcntl.flock()`-based file locks:
+
+```mermaid
+flowchart TD
+    subgraph "Process A (SDK script)"
+        A_recv["recv()"]
+        A_send["send()"]
+    end
+
+    subgraph "Process B (MCP stdio)"
+        B_recv["recv()"]
+        B_send["send()"]
+    end
+
+    subgraph "~/.weilink/"
+        poll_lock[".poll.lock<br/><i>non-blocking exclusive</i>"]
+        data_lock[".data.lock<br/><i>blocking exclusive (brief)</i>"]
+        files["token.json<br/>contexts.json"]
+    end
+
+    A_recv -->|"try_lock"| poll_lock
+    B_recv -->|"try_lock (fails → [])"| poll_lock
+    A_send -->|"lock"| data_lock
+    B_send -->|"lock"| data_lock
+    poll_lock -.-> files
+    data_lock -.-> files
+```
+
+| Lock | Scope | Behavior |
+|------|-------|----------|
+| `.poll.lock` | Entire `recv()` cycle | Non-blocking try-lock. If held by another process, `recv()` returns `[]` immediately. Prevents cursor divergence. |
+| `.data.lock` | File read-modify-write | Blocking, held briefly (~ms). Serializes `token.json` / `contexts.json` access for both `recv()` and `send()`. |
+
+**Key principle:** disk is the source of truth. Every `recv()` and `send()` re-reads state from disk under the data lock before acting, ensuring changes from other processes are visible.
+
+On Windows, file locking is skipped (no `fcntl`) and WeiLink operates as before.
+
 ## QR Code Login Flow
 
 Login uses a QR code scanned by the WeChat mobile app. The flow works the same whether initiated from the terminal or the admin panel.

@@ -97,6 +97,9 @@ bot_a = WeiLink(base_path="~/.weilink-app-a")
 bot_b = WeiLink(base_path="~/.weilink-app-b")
 ```
 
+!!! info "Cross-Process Safety"
+    Multiple processes sharing the same base path (e.g., an SDK script and a stdio MCP server) are coordinated via file locks. Only one process can poll for messages at a time; the other's `recv()` returns an empty list. Both can `send()` concurrently. See [Architecture > Cross-Process File Locking](../architecture.md#cross-process-file-locking) for details.
+
 ## Backward Compatibility
 
 All existing single-session code works unchanged. When `name` is omitted from `login()`, the default session is used:
