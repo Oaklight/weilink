@@ -160,8 +160,9 @@ def migrate_openclaw(
             try:
                 from datetime import datetime, timezone
 
+                # Python 3.10 fromisoformat doesn't accept trailing "Z"
                 created_at = (
-                    datetime.fromisoformat(saved_at)
+                    datetime.fromisoformat(saved_at.replace("Z", "+00:00"))
                     .replace(tzinfo=timezone.utc)
                     .timestamp()
                 )
