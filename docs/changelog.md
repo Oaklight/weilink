@@ -2,20 +2,23 @@
 
 ## 未发布
 
-### 问题修复
-
-- **修复管理面板登录未保存 `user_id`** — `_handle_poll_login` 现在从 QR 确认响应中提取 `ilink_user_id` 并存入 `BotInfo`，与 SDK `login()` 行为一致
-- **管理面板新增 User ID 列** — 会话表格现显示 bot 拥有者的微信用户 ID；`/api/sessions` 响应中增加 `user_id` 字段，更新 HTML 表格及中英文 locale
-
 ### 新功能
 
 - **SQLite 消息持久化** — 新增 `MessageStore`（`_store.py`），基于 SQLite WAL 模式存储所有收发消息到 `messages.db`；支持历史消息查询、防止重启后消息丢失、`download_media` 重启后仍可恢复；通过 `WeiLink(message_store=True)` 启用，MCP/OpenAPI 服务模式下默认开启
 - **`get_message_history` MCP 工具** — 按用户、bot、类型、方向、时间范围或文本内容查询历史消息；支持 `limit`/`offset` 分页
 
+## v0.4.3 (2026-03-30)
+
+### 问题修复
+
+- **修复管理面板登录未保存 `user_id`** — `_handle_poll_login` 现在从 QR 确认响应中提取 `ilink_user_id` 并存入 `BotInfo`，与 SDK `login()` 行为一致
+- **整合管理面板用户 ID 显示** — 用统一的「用户 ID」列替代冗余的「用户」列，显示 bot 拥有者的微信用户 ID 及活跃/过期徽章；`/api/sessions` 响应中增加 `user_id` 字段
+
 ### 改进
 
 - **协议层增加调试日志** — `_protocol.py` 现在在 DEBUG/INFO 级别记录所有 HTTP 请求/响应、`get_updates` 消息数量、cursor 变化和错误详情，便于问题排查
 - **MCP `recv_messages` 增加调试日志** — `server/app.py` 记录轮询开始、消息数量和单条消息详情
+- **Docker entrypoint 支持 PUID/PGID** — 新增 `entrypoint.sh`，运行时通过 `su-exec` 修正 `/data/weilink` 目录权限，支持 bind-mount 卷与宿主机用户权限匹配
 
 ## v0.4.2 (2026-03-28)
 
