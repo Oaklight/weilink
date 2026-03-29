@@ -156,6 +156,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 {
                     "name": name,
                     "bot_id": s.bot_info.bot_id if s.bot_info else None,
+                    "user_id": s.bot_info.user_id if s.bot_info else None,
                     "connected": s.bot_info is not None,
                     "is_default": s is wl._default_session,
                     "created_at": s.created_at,
@@ -246,6 +247,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             bot_token = status_resp.get("bot_token", "")
             base_url = status_resp.get("baseurl", proto.BASE_URL)
             bot_id = status_resp.get("ilink_bot_id", "")
+            user_id = status_resp.get("ilink_user_id", "")
             name = pending["name"]
 
             with self._lock:
@@ -260,7 +262,10 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                     session = wl._create_session(name, token_path)
 
                 session.bot_info = BotInfo(
-                    bot_id=bot_id, base_url=base_url, token=bot_token
+                    bot_id=bot_id,
+                    base_url=base_url,
+                    token=bot_token,
+                    user_id=user_id,
                 )
                 session.cursor = ""
                 wl._save_session_state(session)

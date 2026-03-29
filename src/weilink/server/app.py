@@ -75,16 +75,30 @@ async def recv_messages(timeout: float = 5.0) -> str:
     """
     wl = _get_client()
     if not wl.is_connected:
+        logger.warning("recv_messages called but not logged in")
         return json.dumps({"error": "Not logged in. Use login tool first."})
 
+    logger.debug("recv_messages: polling with timeout=%.1fs", timeout)
     try:
         messages = await asyncio.to_thread(wl.recv, timeout=timeout)
     except SessionExpiredError:
+        logger.error("recv_messages: session expired")
         return json.dumps({"error": "Session expired. Please re-login."})
-    except (TimeoutError, OSError):
+    except (TimeoutError, OSError) as e:
+        logger.debug("recv_messages: timeout/network error: %s", e)
         messages = []
     except RuntimeError as e:
+        logger.error("recv_messages: runtime error: %s", e)
         return json.dumps({"error": str(e)})
+
+    logger.info("recv_messages: got %d message(s)", len(messages))
+    for msg in messages:
+        logger.debug(
+            "  msg: type=%s, from=%s, text=%r",
+            msg.msg_type.name,
+            msg.from_user,
+            msg.text[:50] if msg.text else None,
+        )
 
     _cache_messages(messages)
     return json.dumps([m.to_dict() for m in messages])

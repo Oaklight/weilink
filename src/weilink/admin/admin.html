@@ -466,6 +466,7 @@ tr:hover td { background: var(--bg-hover); }
           <tr>
             <th data-i18n="sessions.name">Session</th>
             <th data-i18n="sessions.bot_id">Bot ID</th>
+            <th data-i18n="sessions.user_id">User ID</th>
             <th data-i18n="sessions.status">Status</th>
             <th data-i18n="sessions.users">Users</th>
             <th data-i18n="sessions.actions">Actions</th>
@@ -730,6 +731,7 @@ function renderSessions(data) {
     html += `<tr id="session-row-${s.name}">
       <td><strong>${escapeHtml(s.name)}</strong>${defaultBadge}</td>
       <td style="font-family:monospace;font-size:12px">${s.bot_id || '—'}</td>
+      <td style="font-family:monospace;font-size:12px">${s.user_id || '—'}</td>
       <td>${statusBadge}</td>
       <td>${userCell}</td>
       <td>${actionsHtml}</td>
@@ -739,7 +741,7 @@ function renderSessions(data) {
     if (s.users.length > 0) {
       s.users.forEach(u => {
         html += `<tr class="user-row user-rows-${s.name}" style="display:none">
-          <td colspan="5">
+          <td colspan="6">
             <div style="padding:4px 0 4px 16px;font-size:13px;color:var(--text-secondary);display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
               <div><strong>${i18n.t('users.first_seen')}:</strong> ${formatTime(u.first_seen)}</div>
               <div><strong>${i18n.t('users.last_received')}:</strong> ${formatTime(u.last_interaction)}</div>

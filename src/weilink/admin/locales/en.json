@@ -18,6 +18,7 @@
     "title": "Sessions",
     "name": "Session",
     "bot_id": "Bot ID",
+    "user_id": "User ID",
     "status": "Status",
     "users": "Users",
     "actions": "Actions",

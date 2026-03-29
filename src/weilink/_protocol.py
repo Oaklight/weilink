@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import random
 import time
 import urllib.error
@@ -15,6 +16,8 @@ import urllib.parse
 import urllib.request
 import uuid
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # iLink API endpoints
 BASE_URL = "https://ilinkai.weixin.qq.com"
@@ -109,20 +112,41 @@ def post(
     data = json.dumps(body).encode()
     headers = _make_headers(token)
 
+    logger.debug("POST %s (timeout=%.1fs, body_len=%d)", url, timeout, len(data))
+
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result: dict[str, Any] = json.loads(resp.read())
+            raw = resp.read()
+            result: dict[str, Any] = json.loads(raw)
+            logger.debug(
+                "POST %s -> HTTP %s, resp_len=%d, ret=%s",
+                endpoint,
+                resp.status,
+                len(raw),
+                result.get("ret", "?"),
+            )
     except urllib.error.URLError as e:
+        logger.warning("POST %s failed: %s", endpoint, e)
         raise ILinkError(ret=-1, errmsg=str(e)) from e
 
     ret = result.get("ret", 0)
     errcode = result.get("errcode")
 
     if errcode == SESSION_EXPIRED:
+        logger.warning("Session expired on %s (ret=%s)", endpoint, ret)
         raise SessionExpiredError(
             ret=ret, errcode=errcode, errmsg=result.get("errmsg", "session expired")
+        )
+
+    if ret != 0:
+        logger.warning(
+            "POST %s non-zero ret=%s, errcode=%s, errmsg=%s",
+            endpoint,
+            ret,
+            errcode,
+            result.get("errmsg", ""),
         )
 
     return result
@@ -218,7 +242,31 @@ def get_updates(
         "get_updates_buf": cursor,
         "base_info": {"channel_version": CHANNEL_VERSION},
     }
-    return post(EP_GET_UPDATES, body, token, base_url, timeout=timeout)
+    logger.debug(
+        "get_updates: cursor=%s, timeout=%.1fs",
+        cursor[:32] + "..." if len(cursor) > 32 else cursor or "(empty)",
+        timeout,
+    )
+    result = post(EP_GET_UPDATES, body, token, base_url, timeout=timeout)
+    msgs = result.get("msgs", [])
+    new_cursor = result.get("get_updates_buf", "")
+    lp_ms = result.get("longpolling_timeout_ms")
+    logger.info(
+        "get_updates: %d msg(s), new_cursor=%s, longpoll_ms=%s",
+        len(msgs),
+        new_cursor[:32] + "..." if len(new_cursor) > 32 else new_cursor or "(empty)",
+        lp_ms,
+    )
+    if msgs:
+        for i, m in enumerate(msgs):
+            logger.debug(
+                "  msg[%d]: type=%s, from=%s, keys=%s",
+                i,
+                m.get("message_type"),
+                m.get("from_user_id", "?"),
+                list(m.keys()),
+            )
+    return result
 
 
 def send_message(
