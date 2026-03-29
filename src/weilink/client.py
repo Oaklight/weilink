@@ -187,6 +187,7 @@ class WeiLink:
         token_path: str | Path | None = None,
         *,
         base_path: str | Path | None = None,
+        message_store: bool | str | Path | None = None,
     ):
         """Initialize the WeiLink client.
 
@@ -197,6 +198,10 @@ class WeiLink:
                 sessions are stored under ``<base_path>/<name>/``.
                 Defaults to ``~/.weilink/``.  Ignored if *token_path*
                 is given (the base path is derived from it).
+            message_store: Enable SQLite message persistence.
+                ``None`` (default) disables it.  ``True`` uses
+                ``<base_path>/messages.db``.  A path string or
+                ``Path`` specifies a custom database location.
         """
         if token_path is not None:
             self._base_path = Path(token_path).parent
@@ -219,6 +224,17 @@ class WeiLink:
         # Cross-process file locks
         self._poll_lock = FileLock(self._base_path / ".poll.lock")
         self._data_lock = FileLock(self._base_path / ".data.lock")
+
+        # Optional SQLite message persistence
+        self._message_store: Any = None
+        if message_store is not None and message_store is not False:
+            from weilink._store import MessageStore
+
+            if message_store is True:
+                db_path = self._base_path / "messages.db"
+            else:
+                db_path = Path(str(message_store))
+            self._message_store = MessageStore(db_path)
 
         # Auto-discover named sessions from disk first
         named: list[_Session] = []
@@ -989,6 +1005,13 @@ class WeiLink:
                     users_with_new_token.add(msg.from_user)
                 messages.append(msg)
 
+        # Persist received messages to SQLite (if enabled).
+        if messages and self._message_store is not None:
+            try:
+                self._message_store.store(messages, direction=1)
+            except Exception:
+                logger.warning("Failed to store messages", exc_info=True)
+
         # Merge with disk: re-read contexts, then overwrite only users
         # that received new tokens.  This preserves send_counts updated
         # by other processes for users NOT in this batch.
@@ -1245,6 +1268,17 @@ class WeiLink:
             if all_ok:
                 session.send_timestamps[to] = time.time()
             self._save_session_contexts(session)
+
+        # Persist sent text to SQLite (if enabled).
+        if all_ok and text and self._message_store is not None:
+            try:
+                self._message_store.store_sent(
+                    user_id=to,
+                    bot_id=session.bot_info.bot_id if session.bot_info else "",
+                    text=text,
+                )
+            except Exception:
+                logger.warning("Failed to store sent message", exc_info=True)
 
         remaining = proto.CONTEXT_TOKEN_QUOTA - session.send_counts.get(to, 0)
         return SendResult(success=all_ok, messages=recv_messages, remaining=remaining)
@@ -1530,6 +1564,8 @@ class WeiLink:
         """Save state for all sessions and clean up."""
         self.stop()
         self.stop_admin()
+        if self._message_store is not None:
+            self._message_store.close()
         for session in self._sessions.values():
             self._save_session_state(session)
         self._poll_lock.close()

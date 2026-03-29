@@ -32,7 +32,7 @@ def _init_client(base_path: Path | None = None) -> None:
     """Pre-initialize the global WeiLink client with optional *base_path*."""
     global _wl
     if _wl is None:
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {"message_store": True}
         if base_path is not None:
             kwargs["base_path"] = base_path
         _wl = WeiLink(**kwargs)
@@ -194,6 +194,14 @@ async def download_media(message_id: str, save_dir: str = "") -> str:
         JSON with saved file path and size in bytes.
     """
     msg = _message_cache.get(message_id)
+    if msg is None:
+        # Fall back to persistent store
+        wl = _get_client()
+        if wl._message_store is not None:
+            try:
+                msg = wl._message_store.get_by_id(int(message_id))
+            except (ValueError, TypeError):
+                pass
     if msg is None:
         return json.dumps(
             {
@@ -385,6 +393,95 @@ async def check_login() -> str:
     return json.dumps({"status": "pending", "message": "Waiting for scan..."})
 
 
+def get_message_history(
+    user_id: str = "",
+    bot_id: str = "",
+    msg_type: str = "",
+    direction: str = "",
+    since: str = "",
+    until: str = "",
+    text_contains: str = "",
+    limit: int = 50,
+    offset: int = 0,
+) -> str:
+    """Query message history from the persistent store.
+
+    Search past messages by user, bot session, message type, direction,
+    time range, or text content.  Results are ordered by timestamp
+    descending (newest first).
+
+    Args:
+        user_id: Filter by WeChat user ID (e.g. xxx@im.wechat).
+        bot_id: Filter by bot session ID (e.g. xxx@im.bot).
+        msg_type: Filter by type: TEXT, IMAGE, VOICE, FILE, or VIDEO.
+        direction: Filter by direction: "received" or "sent".
+        since: Start time (ISO 8601 string or unix milliseconds).
+        until: End time (ISO 8601 string or unix milliseconds).
+        text_contains: Case-insensitive text substring search.
+        limit: Maximum results to return (default 50, max 200).
+        offset: Pagination offset.
+
+    Returns:
+        JSON with messages array, total count, limit, and offset.
+    """
+    wl = _get_client()
+    if wl._message_store is None:
+        return json.dumps({"error": "Message persistence is not enabled."})
+
+    # Parse filter parameters
+    kwargs: dict[str, Any] = {}
+    if user_id:
+        kwargs["user_id"] = user_id
+    if bot_id:
+        kwargs["bot_id"] = bot_id
+    if msg_type:
+        try:
+            kwargs["msg_type"] = MessageType[msg_type.upper()].value
+        except KeyError:
+            return json.dumps({"error": f"Unknown msg_type: {msg_type}"})
+    if direction:
+        d = direction.lower()
+        if d == "received":
+            kwargs["direction"] = 1
+        elif d == "sent":
+            kwargs["direction"] = 2
+        else:
+            return json.dumps({"error": f"Unknown direction: {direction}"})
+    if since:
+        ts = _parse_time(since)
+        if ts is not None:
+            kwargs["since_ms"] = ts
+    if until:
+        ts = _parse_time(until)
+        if ts is not None:
+            kwargs["until_ms"] = ts
+    if text_contains:
+        kwargs["text_contains"] = text_contains
+
+    total = wl._message_store.count(**kwargs)
+    messages = wl._message_store.query(**kwargs, limit=limit, offset=offset)
+    return json.dumps(
+        {"messages": messages, "total": total, "limit": limit, "offset": offset}
+    )
+
+
+def _parse_time(s: str) -> int | None:
+    """Parse an ISO 8601 string or unix milliseconds to int ms."""
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        from datetime import datetime
+
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return int(dt.timestamp() * 1000)
+    except (ValueError, TypeError):
+        return None
+
+
 # ------------------------------------------------------------------
 # Registry and server entry points
 # ------------------------------------------------------------------
@@ -393,6 +490,7 @@ _TOOL_FUNCTIONS = [
     recv_messages,
     send_message,
     download_media,
+    get_message_history,
     list_sessions,
     login,
     check_login,
