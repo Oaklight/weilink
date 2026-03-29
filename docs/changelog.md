@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+- **Fix admin panel login not saving `user_id`** — `_handle_poll_login` now extracts `ilink_user_id` from the QR confirmation response and stores it in `BotInfo`, matching the SDK `login()` behaviour
+- **Add User ID column to admin panel** — session table now displays the bot owner's WeChat user ID; added `user_id` field to the `/api/sessions` response and updated the HTML table, locales (en/zh)
+
+### Improvements
+
+- **Add debug logging to protocol layer** — `_protocol.py` now logs all HTTP requests/responses, `get_updates` message counts, cursor changes, and error details at DEBUG/INFO level for easier troubleshooting
+- **Add debug logging to MCP `recv_messages`** — `server/app.py` logs polling start, message counts, and individual message details
+
 ## v0.4.2 (2026-03-28)
 
 ### New Features
