@@ -2,20 +2,23 @@
 
 ## Unreleased
 
-### Bug Fixes
-
-- **Fix admin panel login not saving `user_id`** — `_handle_poll_login` now extracts `ilink_user_id` from the QR confirmation response and stores it in `BotInfo`, matching the SDK `login()` behaviour
-- **Add User ID column to admin panel** — session table now displays the bot owner's WeChat user ID; added `user_id` field to the `/api/sessions` response and updated the HTML table, locales (en/zh)
-
 ### New Features
 
 - **SQLite message persistence** — new `MessageStore` (`_store.py`) backed by SQLite WAL mode stores all received and sent messages to `messages.db`; enables message history queries, prevents message loss across restarts, and provides a `download_media` fallback after server restart; opt-in via `WeiLink(message_store=True)`, enabled by default in MCP/OpenAPI server mode
 - **`get_message_history` MCP tool** — query past messages by user, bot, type, direction, time range, or text content; supports pagination with `limit`/`offset`
 
+## v0.4.3 (2026-03-30)
+
+### Bug Fixes
+
+- **Fix admin panel login not saving `user_id`** — `_handle_poll_login` now extracts `ilink_user_id` from the QR confirmation response and stores it in `BotInfo`, matching the SDK `login()` behaviour
+- **Consolidate admin panel User ID display** — replaced the redundant "Users" column with a unified "User ID" column showing the bot owner's WeChat user ID and active/expired badge; added `user_id` field to the `/api/sessions` response
+
 ### Improvements
 
 - **Add debug logging to protocol layer** — `_protocol.py` now logs all HTTP requests/responses, `get_updates` message counts, cursor changes, and error details at DEBUG/INFO level for easier troubleshooting
 - **Add debug logging to MCP `recv_messages`** — `server/app.py` logs polling start, message counts, and individual message details
+- **Add Docker entrypoint with PUID/PGID support** — new `entrypoint.sh` fixes `/data/weilink` ownership at runtime via `su-exec`, allowing bind-mounted volumes to match host user permissions
 
 ## v0.4.2 (2026-03-28)
 
