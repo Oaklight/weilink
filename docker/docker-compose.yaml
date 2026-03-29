@@ -6,6 +6,9 @@ services:
       - "49999:8080"  # Admin panel
     volumes:
       - weilink-data:/data/weilink
+    environment:
+      - PUID=1000  # Match your host user's UID
+      - PGID=1000  # Match your host user's GID
     restart: unless-stopped
 
 volumes:

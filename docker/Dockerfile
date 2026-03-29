@@ -14,9 +14,12 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Create a non-privileged user (alpine syntax).
-ARG UID=10001
-RUN adduser -D -u "${UID}" appuser
+# Create a non-privileged user and group (alpine syntax).
+RUN addgroup -g 1000 appgroup && \
+    adduser -D -u 1000 -G appgroup appuser
+
+# Install su-exec for runtime user switching in entrypoint.
+RUN apk add --no-cache su-exec
 
 # Copy local wheels if available
 RUN mkdir -p /tmp/dist/
@@ -53,11 +56,15 @@ RUN if [ -n "$LOCAL_WHEEL" ] && [ -f "/tmp/dist/$LOCAL_WHEEL" ]; then \
     rm -rf /tmp/dist/ /tmp/build/
 
 # Data directory for session tokens — mount a volume here to persist across restarts.
-RUN mkdir -p /data/weilink && chown appuser:appuser /data/weilink
+RUN mkdir -p /data/weilink && chown appuser:appgroup /data/weilink
 VOLUME /data/weilink
 
-USER appuser
+# Entrypoint fixes /data/weilink ownership and drops to appuser via su-exec.
+# Set PUID/PGID environment variables to match your host user (default: 1000).
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000 8080
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["weilink", "mcp", "-t", "sse", "--host", "0.0.0.0", "-p", "8000", "--admin-port", "8080", "-d", "/data/weilink"]
