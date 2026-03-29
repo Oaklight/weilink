@@ -20,13 +20,10 @@
     "bot_id": "Bot ID",
     "user_id": "User ID",
     "status": "Status",
-    "users": "Users",
     "actions": "Actions",
     "no_sessions": "No sessions registered",
     "connected": "Connected",
     "not_connected": "Not Connected",
-    "show_users": "Show Users",
-    "hide_users": "Hide Users",
     "default_badge": "Default"
   },
   "users": {

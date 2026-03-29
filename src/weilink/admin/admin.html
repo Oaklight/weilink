@@ -468,7 +468,6 @@ tr:hover td { background: var(--bg-hover); }
             <th data-i18n="sessions.bot_id">Bot ID</th>
             <th data-i18n="sessions.user_id">User ID</th>
             <th data-i18n="sessions.status">Status</th>
-            <th data-i18n="sessions.users">Users</th>
             <th data-i18n="sessions.actions">Actions</th>
           </tr>
         </thead>
@@ -697,13 +696,12 @@ function renderSessions(data) {
       ? `<span class="badge badge-success" data-i18n="sessions.connected">${i18n.t('sessions.connected')}</span>`
       : `<span class="badge badge-danger" data-i18n="sessions.not_connected">${i18n.t('sessions.not_connected')}</span>`;
 
-    let userCell = '—';
+    let freshBadge = '';
     if (s.users.length > 0) {
       const u = s.users[0];
-      const freshBadge = u.fresh
-        ? `<span class="badge badge-success">${i18n.t('users.fresh')}</span>`
-        : `<span class="badge badge-warning">${i18n.t('users.expired')}</span>`;
-      userCell = `<span class="user-link" style="font-family:monospace;font-size:12px" onclick="toggleUsers('${s.name}')">${escapeHtml(u.user_id)}</span> ${freshBadge}`;
+      freshBadge = u.fresh
+        ? ` <span class="badge badge-success">${i18n.t('users.fresh')}</span>`
+        : ` <span class="badge badge-warning">${i18n.t('users.expired')}</span>`;
     }
 
     const defaultBadge = s.is_default
@@ -731,9 +729,8 @@ function renderSessions(data) {
     html += `<tr id="session-row-${s.name}">
       <td><strong>${escapeHtml(s.name)}</strong>${defaultBadge}</td>
       <td style="font-family:monospace;font-size:12px">${s.bot_id || '—'}</td>
-      <td style="font-family:monospace;font-size:12px">${s.user_id || '—'}</td>
+      <td style="font-family:monospace;font-size:12px">${s.user_id ? `<span class="user-link" onclick="toggleUsers('${s.name}')">${escapeHtml(s.user_id)}</span>${freshBadge}` : '—'}</td>
       <td>${statusBadge}</td>
-      <td>${userCell}</td>
       <td>${actionsHtml}</td>
     </tr>`;
 
@@ -741,7 +738,7 @@ function renderSessions(data) {
     if (s.users.length > 0) {
       s.users.forEach(u => {
         html += `<tr class="user-row user-rows-${s.name}" style="display:none">
-          <td colspan="6">
+          <td colspan="5">
             <div style="padding:4px 0 4px 16px;font-size:13px;color:var(--text-secondary);display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
               <div><strong>${i18n.t('users.first_seen')}:</strong> ${formatTime(u.first_seen)}</div>
               <div><strong>${i18n.t('users.last_received')}:</strong> ${formatTime(u.last_interaction)}</div>
