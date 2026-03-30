@@ -379,6 +379,10 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
 
         total = store.count(**kwargs)
         messages = store.query(**kwargs, limit=limit, offset=offset)
+        # Convert message_id to string to avoid JS integer precision loss
+        for m in messages:
+            if "message_id" in m:
+                m["message_id"] = str(m["message_id"])
         self._send_json({"messages": messages, "total": total})
 
     _MIME_MAP: ClassVar[dict[str, str]] = {
