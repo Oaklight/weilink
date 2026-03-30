@@ -49,7 +49,7 @@ def _json_flag(args: argparse.Namespace) -> bool:
 
 
 def _run_login(args: argparse.Namespace) -> None:
-    """Interactive QR code login."""
+    """Login a session via QR code scan."""
     wl = _make_client(args)
     name = getattr(args, "session_name", None) or None
     try:
@@ -581,7 +581,7 @@ def main(argv: list[str] | None = None) -> None:
         description="WeiLink — lightweight WeChat iLink Bot SDK CLI.",
         epilog=(
             "bot commands:\n"
-            "  login       Login via QR code scan\n"
+            "  login       Login a session via QR code scan\n"
             "  logout      Log out a session\n"
             "  status      Show session connection status\n"
             "  recv        Receive messages\n"
@@ -637,7 +637,7 @@ def main(argv: list[str] | None = None) -> None:
     # ── login subcommand ─────────────────────────────────────────
     login_parser = subparsers.add_parser(
         "login",
-        help="Login via QR code scan.",
+        help="Login a session via QR code scan.",
     )
     login_parser.add_argument(
         "session_name",

@@ -148,7 +148,7 @@ class Session:
         self._client.set_default(self._internal.name)
 
     def login(self, force: bool = False) -> BotInfo:
-        """Login this session via QR code scan.
+        """Login a session via QR code scan.
 
         Args:
             force: Force a new QR code login even if credentials exist.
@@ -728,7 +728,7 @@ class WeiLink:
     # ------------------------------------------------------------------
 
     def login(self, name: str | None = None, force: bool = False) -> BotInfo:
-        """Login via QR code scan.
+        """Login a session via QR code scan.
 
         If valid credentials exist on disk and force is False, reuses them.
 

@@ -268,7 +268,7 @@ def sessions() -> str:
 async def login(
     session_name: str = "", timeout: float = 30.0, force: bool = False
 ) -> str:
-    """Log in to WeChat via QR code scan.
+    """Login a session via QR code scan.
 
     On the first call (or when ``force=True``), starts a new QR login flow
     and returns the QR code URL for the user to scan.  On subsequent calls
