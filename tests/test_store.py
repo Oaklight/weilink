@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -36,7 +37,7 @@ def db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def store(db_path: Path) -> MessageStore:
+def store(db_path: Path) -> Generator[MessageStore]:
     s = MessageStore(db_path, max_age_days=None, max_count=None)
     yield s
     s.close()
@@ -166,6 +167,7 @@ class TestSerialization:
         msg = _make_image_msg()
         restored = deserialize_message(serialize_message(msg))
         assert restored.image is not None
+        assert msg.image is not None
         assert restored.image.url == msg.image.url
         assert restored.image.media.aes_key == msg.image.media.aes_key
         assert (
@@ -178,6 +180,7 @@ class TestSerialization:
         msg = _make_voice_msg()
         restored = deserialize_message(serialize_message(msg))
         assert restored.voice is not None
+        assert msg.voice is not None
         assert restored.voice.playtime == msg.voice.playtime
         assert restored.voice.text == msg.voice.text
         assert restored.voice.encode_type == 6
@@ -369,8 +372,9 @@ class TestMigration:
         store.close()
 
         store2 = MessageStore(db_path)
-        assert store2.get_by_id(42) is not None
-        assert store2.get_by_id(42).text == "hello"
+        result = store2.get_by_id(42)
+        assert result is not None
+        assert result.text == "hello"
         store2.close()
 
 
