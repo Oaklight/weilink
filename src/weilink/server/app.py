@@ -60,12 +60,12 @@ def _cache_messages(messages: list[Message]) -> None:
 # ------------------------------------------------------------------
 
 
-async def recv_messages(timeout: float = 5.0) -> str:
+async def recv(timeout: float = 5.0) -> str:
     """Receive new messages from WeChat users.
 
     Long-polls all active sessions and returns any pending messages.
     Received messages are cached so their media can be downloaded later
-    via download_media.
+    via the download tool.
 
     Args:
         timeout: Maximum wait time in seconds (default 5).
@@ -75,23 +75,23 @@ async def recv_messages(timeout: float = 5.0) -> str:
     """
     wl = _get_client()
     if not wl.is_connected:
-        logger.warning("recv_messages called but not logged in")
+        logger.warning("recv called but not logged in")
         return json.dumps({"error": "Not logged in. Use login tool first."})
 
-    logger.debug("recv_messages: polling with timeout=%.1fs", timeout)
+    logger.debug("recv: polling with timeout=%.1fs", timeout)
     try:
         messages = await asyncio.to_thread(wl.recv, timeout=timeout)
     except SessionExpiredError:
-        logger.error("recv_messages: session expired")
+        logger.error("recv: session expired")
         return json.dumps({"error": "Session expired. Please re-login."})
     except (TimeoutError, OSError) as e:
-        logger.debug("recv_messages: timeout/network error: %s", e)
+        logger.debug("recv: timeout/network error: %s", e)
         messages = []
     except RuntimeError as e:
-        logger.error("recv_messages: runtime error: %s", e)
+        logger.error("recv: runtime error: %s", e)
         return json.dumps({"error": str(e)})
 
-    logger.info("recv_messages: got %d message(s)", len(messages))
+    logger.info("recv: got %d message(s)", len(messages))
     for msg in messages:
         logger.debug(
             "  msg: type=%s, from=%s, text=%r",
@@ -104,7 +104,7 @@ async def recv_messages(timeout: float = 5.0) -> str:
     return json.dumps([m.to_dict() for m in messages])
 
 
-async def send_message(
+async def send(
     to: str,
     text: str = "",
     image_path: str = "",
@@ -181,13 +181,14 @@ async def send_message(
     return json.dumps(response)
 
 
-async def download_media(message_id: str, save_dir: str = "") -> str:
+async def download(message_id: str, save_dir: str = "") -> str:
     """Download media from a previously received message.
 
-    The message must have been received via recv_messages in this session.
+    The message must have been received via the recv tool in this session,
+    or be available in the persistent message store.
 
     Args:
-        message_id: Message ID from the recv_messages output.
+        message_id: Message ID from the recv output.
         save_dir: Directory to save the file (default ~/.weilink/downloads/).
 
     Returns:
@@ -206,7 +207,7 @@ async def download_media(message_id: str, save_dir: str = "") -> str:
         return json.dumps(
             {
                 "error": f"Message {message_id} not found in cache. "
-                "Receive it first via recv_messages."
+                "Receive it first via recv."
             }
         )
 
@@ -244,7 +245,7 @@ def _media_filename(msg: Message) -> str:
     return f"{msg.message_id}{ext}"
 
 
-def list_sessions() -> str:
+def sessions() -> str:
     """List all WeiLink sessions and their connection status.
 
     Returns:
@@ -264,136 +265,142 @@ def list_sessions() -> str:
     return json.dumps(sessions)
 
 
-async def login(session_name: str = "") -> str:
-    """Start a QR code login flow.
+async def login(
+    session_name: str = "", timeout: float = 30.0, force: bool = False
+) -> str:
+    """Log in to WeChat via QR code scan.
 
-    Returns a QR code URL that the user must open in a browser and scan
-    with WeChat. After scanning, call check_login to confirm.
+    On the first call (or when ``force=True``), starts a new QR login flow
+    and returns the QR code URL for the user to scan.  On subsequent calls
+    while a login flow is pending, polls the server for up to ``timeout``
+    seconds and returns the current status.
+
+    Typical agent workflow::
+
+        login()          → {"status": "pending", "qr_url": "..."}
+        login()          → {"status": "scanned"}
+        login()          → {"status": "confirmed", "bot_id": "..."}
 
     Args:
         session_name: Optional session name for multi-account support.
             Leave empty for the default session.
-
-    Returns:
-        JSON with qr_url for the user to scan.
-    """
-    global _pending_login
-    from weilink import _protocol as proto
-
-    try:
-        qr_resp = await asyncio.to_thread(proto.get_qr_code)
-    except ILinkError as e:
-        return json.dumps({"error": f"Failed to get QR code: {e}"})
-
-    qrcode = qr_resp.get("qrcode", "")
-    qr_url = qr_resp.get("qrcode_img_content", "")
-
-    _pending_login = {
-        "qrcode": qrcode,
-        "session_name": session_name or None,
-        "created_at": time.time(),
-    }
-
-    return json.dumps(
-        {
-            "status": "pending",
-            "qr_url": qr_url,
-            "message": "Open the QR code URL in a browser and scan with WeChat.",
-        }
-    )
-
-
-async def check_login() -> str:
-    """Check the status of a pending QR code login.
-
-    Must be called after login. Polls the server once and returns
-    the current status. Call repeatedly until status is 'confirmed'
-    or 'expired'.
+        timeout: Maximum seconds to poll for status change (default 30).
+            Only used when a login flow is already pending.
+        force: If True, discard any pending login and start a fresh QR flow.
 
     Returns:
         JSON with status (pending/scanned/confirmed/expired) and details.
     """
     global _pending_login
-    if _pending_login is None:
-        return json.dumps({"error": "No pending login. Call login first."})
-
     from weilink import _protocol as proto
 
-    qrcode = _pending_login["qrcode"]
-    session_name = _pending_login["session_name"]
+    # Start new QR flow if none pending (or forced)
+    if _pending_login is None or force:
+        try:
+            qr_resp = await asyncio.to_thread(proto.get_qr_code)
+        except ILinkError as e:
+            return json.dumps({"error": f"Failed to get QR code: {e}"})
 
-    # Timeout after 5 minutes
+        qrcode = qr_resp.get("qrcode", "")
+        qr_url = qr_resp.get("qrcode_img_content", "")
+
+        _pending_login = {
+            "qrcode": qrcode,
+            "session_name": session_name or None,
+            "created_at": time.time(),
+        }
+
+        return json.dumps(
+            {
+                "status": "pending",
+                "qr_url": qr_url,
+                "message": "Open the QR code URL in a browser and scan with WeChat.",
+            }
+        )
+
+    # Pending flow exists — poll until status changes or timeout
+    qrcode = _pending_login["qrcode"]
+    session_name_stored = _pending_login["session_name"]
+
+    # Hard timeout: 5 minutes since flow started
     if time.time() - _pending_login["created_at"] > 300:
         _pending_login = None
         return json.dumps({"status": "expired", "message": "Login timed out."})
 
-    try:
-        status_resp = await asyncio.to_thread(proto.poll_qr_status, qrcode)
-    except (ILinkError, TimeoutError, OSError) as e:
-        return json.dumps({"status": "pending", "message": f"Poll error: {e}"})
+    deadline = time.time() + timeout
+    last_status = "pending"
 
-    status = status_resp.get("status", "")
+    while time.time() < deadline:
+        try:
+            status_resp = await asyncio.to_thread(proto.poll_qr_status, qrcode)
+        except (ILinkError, TimeoutError, OSError) as e:
+            logger.debug("login poll error: %s", e)
+            await asyncio.sleep(2)
+            continue
 
-    if status == "confirmed":
-        wl = _get_client()
-        bot_token = status_resp.get("bot_token", "")
-        base_url = status_resp.get("baseurl", proto.BASE_URL)
-        bot_id = status_resp.get("ilink_bot_id", "")
-        user_id = status_resp.get("ilink_user_id", "")
+        status = status_resp.get("status", "")
 
-        # Use the public login API to properly initialize session state.
-        # Since we already confirmed, calling login() would try to start
-        # a new QR flow. Instead, we manually set up the session via the
-        # internal interface that login() uses.
-        from weilink.models import BotInfo
+        if status == "confirmed":
+            wl = _get_client()
+            bot_token = status_resp.get("bot_token", "")
+            base_url = status_resp.get("baseurl", proto.BASE_URL)
+            bot_id = status_resp.get("ilink_bot_id", "")
+            user_id = status_resp.get("ilink_user_id", "")
 
-        name = session_name or "default"
-        if name == "default":
-            session = wl._default_session
-        elif name in wl._sessions:
-            session = wl._sessions[name]
-        else:
-            token_path = wl._base_path / name / "token.json"
-            session = wl._create_session(name, token_path)
+            from weilink.models import BotInfo
 
-        session.bot_info = BotInfo(
-            bot_id=bot_id, base_url=base_url, token=bot_token, user_id=user_id
-        )
-        session.cursor = ""
-        wl._save_session_state(session)
+            name = session_name_stored or "default"
+            if name == "default":
+                session = wl._default_session
+            elif name in wl._sessions:
+                session = wl._sessions[name]
+            else:
+                token_path = wl._base_path / name / "token.json"
+                session = wl._create_session(name, token_path)
 
-        _pending_login = None
-        return json.dumps(
-            {
-                "status": "confirmed",
-                "bot_id": bot_id,
-                "session": name,
-                "message": "Login successful!",
-            }
-        )
+            session.bot_info = BotInfo(
+                bot_id=bot_id, base_url=base_url, token=bot_token, user_id=user_id
+            )
+            session.cursor = ""
+            wl._save_session_state(session)
 
-    if status == "scaned":
-        return json.dumps(
-            {
-                "status": "scanned",
-                "message": "QR code scanned. Waiting for confirmation on phone.",
-            }
-        )
+            _pending_login = None
+            return json.dumps(
+                {
+                    "status": "confirmed",
+                    "bot_id": bot_id,
+                    "session": name,
+                    "message": "Login successful!",
+                }
+            )
 
-    if status == "expired":
-        _pending_login = None
-        return json.dumps(
-            {
-                "status": "expired",
-                "message": "QR code expired. Call login again to get a new one.",
-            }
-        )
+        if status == "scaned":
+            # Return immediately on scan — agent knows user is interacting
+            last_status = "scanned"
+            return json.dumps(
+                {
+                    "status": "scanned",
+                    "message": "QR code scanned. Waiting for confirmation on phone.",
+                }
+            )
 
-    # Protocol returns "wait" when no scan yet; map to "pending" for MCP output.
-    return json.dumps({"status": "pending", "message": "Waiting for scan..."})
+        if status == "expired":
+            _pending_login = None
+            return json.dumps(
+                {
+                    "status": "expired",
+                    "message": "QR code expired. Call login again to get a new one.",
+                }
+            )
+
+        # Still waiting — sleep before next poll
+        await asyncio.sleep(2)
+
+    # Timeout reached without status change
+    return json.dumps({"status": last_status, "message": "Still waiting for scan..."})
 
 
-def get_message_history(
+def history(
     user_id: str = "",
     bot_id: str = "",
     msg_type: str = "",
@@ -482,18 +489,78 @@ def _parse_time(s: str) -> int | None:
         return None
 
 
+async def logout(session_name: str = "") -> str:
+    """Log out a WeiLink session.
+
+    Disconnects the session and removes its persisted credentials.
+
+    Args:
+        session_name: Session to log out. Leave empty for the default session.
+
+    Returns:
+        JSON with success status.
+    """
+    wl = _get_client()
+    name = session_name or None
+    try:
+        await asyncio.to_thread(wl.logout, name=name)
+    except (KeyError, RuntimeError) as e:
+        return json.dumps({"error": str(e)})
+    return json.dumps({"success": True, "session": session_name or "default"})
+
+
+def rename_session(old_name: str, new_name: str) -> str:
+    """Rename a WeiLink session.
+
+    Args:
+        old_name: Current session name.
+        new_name: New session name.
+
+    Returns:
+        JSON with success status.
+    """
+    wl = _get_client()
+    try:
+        wl.rename_session(old_name, new_name)
+    except (KeyError, ValueError, RuntimeError) as e:
+        return json.dumps({"error": str(e)})
+    return json.dumps({"success": True, "old_name": old_name, "new_name": new_name})
+
+
+def set_default(session_name: str) -> str:
+    """Set a session as the default.
+
+    The default session is used when no explicit session is specified
+    in other operations.
+
+    Args:
+        session_name: Name of the session to make default.
+
+    Returns:
+        JSON with success status.
+    """
+    wl = _get_client()
+    try:
+        wl.set_default(session_name)
+    except (KeyError, RuntimeError) as e:
+        return json.dumps({"error": str(e)})
+    return json.dumps({"success": True, "default_session": session_name})
+
+
 # ------------------------------------------------------------------
 # Registry and server entry points
 # ------------------------------------------------------------------
 
 _TOOL_FUNCTIONS = [
-    recv_messages,
-    send_message,
-    download_media,
-    get_message_history,
-    list_sessions,
+    recv,
+    send,
+    download,
+    history,
+    sessions,
     login,
-    check_login,
+    logout,
+    rename_session,
+    set_default,
 ]
 
 
