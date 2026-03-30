@@ -398,6 +398,25 @@ class TestAdminMessages:
         # Should not error; limit is capped at 200 internally
         assert len(data["messages"]) == 5
 
+    def test_download_media_not_found(self):
+        try:
+            req = urllib.request.Request(self.base + "/api/messages/999999/download")
+            urllib.request.urlopen(req, timeout=5)
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 404
+
+    def test_download_media_text_message(self):
+        """TEXT messages have no downloadable media."""
+        self._seed_messages(1)
+        msg_id = 1000  # first seeded message_id
+        try:
+            req = urllib.request.Request(self.base + f"/api/messages/{msg_id}/download")
+            urllib.request.urlopen(req, timeout=5)
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+
 
 class TestAdminMessagesDisabled:
     """Tests for /api/messages when message_store is disabled."""
@@ -419,3 +438,11 @@ class TestAdminMessagesDisabled:
             assert e.code == 400
             body = json.loads(e.read())
             assert "not enabled" in body["error"]
+
+    def test_download_media_returns_400_when_disabled(self):
+        try:
+            req = urllib.request.Request(self.base + "/api/messages/12345/download")
+            urllib.request.urlopen(req, timeout=5)
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400

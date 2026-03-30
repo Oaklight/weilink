@@ -76,6 +76,9 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self._handle_get_sessions()
         elif path == "/api/sessions/login/status":
             self._handle_poll_login(query)
+        elif path.startswith("/api/messages/") and path.endswith("/download"):
+            msg_id = path[len("/api/messages/") : -len("/download")]
+            self._handle_download_media(msg_id)
         elif path == "/api/messages":
             self._handle_get_messages(query)
         elif path.startswith("/locales/") and path.endswith(".json"):
@@ -377,6 +380,58 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
         total = store.count(**kwargs)
         messages = store.query(**kwargs, limit=limit, offset=offset)
         self._send_json({"messages": messages, "total": total})
+
+    _MIME_MAP: ClassVar[dict[str, str]] = {
+        "IMAGE": "image/jpeg",
+        "VOICE": "audio/amr",
+        "VIDEO": "video/mp4",
+    }
+    _EXT_MAP: ClassVar[dict[str, str]] = {
+        "IMAGE": ".jpg",
+        "VOICE": ".amr",
+        "VIDEO": ".mp4",
+    }
+
+    def _handle_download_media(self, message_id_str: str) -> None:
+        """Download media from a stored message and serve the bytes."""
+        store = self.weilink._message_store
+        if store is None:
+            self._send_error(400, "Message persistence is not enabled")
+            return
+
+        try:
+            msg = store.get_by_id(int(message_id_str))
+        except (ValueError, TypeError):
+            msg = None
+        if msg is None:
+            self._send_error(404, f"Message {message_id_str} not found")
+            return
+
+        try:
+            data = self.weilink.download(msg)
+        except ValueError as e:
+            self._send_error(400, str(e))
+            return
+        except Exception as e:
+            self._send_error(502, f"Download failed: {e}")
+            return
+
+        # Derive filename and MIME type
+        mt = msg.msg_type.name
+        if msg.file and msg.file.file_name:
+            filename = msg.file.file_name
+        else:
+            ext = self._EXT_MAP.get(mt, ".bin")
+            filename = f"{msg.message_id}{ext}"
+        content_type = self._MIME_MAP.get(mt, "application/octet-stream")
+
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(data)
 
     def _handle_locale(self, lang: str) -> None:
         """Serve a locale JSON file."""

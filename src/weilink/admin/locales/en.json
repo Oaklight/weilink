@@ -82,6 +82,7 @@
     "not_enabled": "Message persistence is not enabled",
     "view_messages": "View Messages",
     "sender_human": "Human",
-    "sender_bot": "Bot"
+    "sender_bot": "Bot",
+    "download_failed": "Download failed"
   }
 }

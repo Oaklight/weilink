@@ -569,6 +569,15 @@ tr:hover td { background: var(--bg-hover); }
   gap: 4px;
   font-size: 13px;
 }
+.bubble-download {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  transition: opacity 0.15s;
+}
+.bubble-download:hover { opacity: 0.7; }
 .bubble-ref {
   border-left: 3px solid var(--border);
   padding: 2px 8px;
@@ -1372,6 +1381,12 @@ function renderBubbles(messages, prepend) {
       content += `<span class="bubble-media">${icon} ${i18n.t('messages.video')}${dur}</span>`;
     } else {
       content += escapeHtml(msg.text || `[${msgType}]`);
+    }
+
+    // Wrap media content in download link
+    if (msg.message_id && msgType !== 'TEXT') {
+      const dlUrl = `/api/messages/${msg.message_id}/download`;
+      content = `<a href="${dlUrl}" target="_blank" download class="bubble-download">${content} \u2b07</a>`;
     }
 
     const timeStr = formatBubbleTime(ts);

@@ -82,6 +82,7 @@
     "not_enabled": "\u6d88\u606f\u6301\u4e45\u5316\u672a\u542f\u7528",
     "view_messages": "\u67e5\u770b\u6d88\u606f",
     "sender_human": "\u7528\u6237",
-    "sender_bot": "\u673a\u5668\u4eba"
+    "sender_bot": "\u673a\u5668\u4eba",
+    "download_failed": "\u4e0b\u8f7d\u5931\u8d25"
   }
 }
