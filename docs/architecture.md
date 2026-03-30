@@ -4,6 +4,10 @@
 
 ## 包结构
 
+包按功能分为三组：核心 SDK、管理面板和服务器/MCP 层。
+
+### 核心 SDK 模块
+
 ```mermaid
 graph TB
     subgraph "weilink 包"
@@ -19,12 +23,57 @@ graph TB
         filelock["_filelock.py<br/><i>跨进程文件锁</i>"]
     end
 
+    client --> protocol
+    client --> cdn
+    client --> models
+    client --> store
+    client --> filelock
+    cdn --> crypto
+    crypto --> aes_ssl
+    crypto -.->|后备| aes_py
+
+    admin[/"weilink.admin"/]
+    server[/"weilink.server"/]
+    client --> admin
+    admin -.-> client
+    admin -.-> protocol
+    admin -.-> qr
+    server -.-> client
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class admin,server ext
+```
+
+### 管理面板模块
+
+```mermaid
+graph TB
     subgraph "weilink.admin"
         admin_srv["server.py<br/><i>AdminServer（守护线程）</i>"]
         admin_hdl["handlers.py<br/><i>REST API 处理器</i>"]
         admin_stc["static.py<br/><i>HTML 与多语言加载</i>"]
     end
 
+    admin_srv --> admin_hdl
+    admin_hdl --> admin_stc
+
+    client[/"client.py"/]
+    protocol[/"_protocol.py"/]
+    qr[/"_qr.py"/]
+
+    client --> admin_srv
+    admin_hdl --> client
+    admin_hdl --> protocol
+    admin_hdl --> qr
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class client,protocol,qr ext
+```
+
+### 服务器与 MCP 模块
+
+```mermaid
+graph TB
     subgraph "weilink.server"
         mcp_srv["app.py<br/><i>工具定义</i>"]
     end
@@ -35,22 +84,15 @@ graph TB
         openapi_out["OpenAPI 传输<br/><i>REST + Swagger UI</i>"]
     end
 
-    client --> protocol
-    client --> cdn
-    client --> models
-    client --> admin_srv
-    client --> store
-    client --> filelock
-    cdn --> crypto
-    crypto --> aes_ssl
-    crypto -.->|后备| aes_py
-    admin_hdl --> protocol
-    admin_hdl --> qr
-    admin_hdl --> client
     mcp_srv --> tr
     tr --> mcp_out
     tr --> openapi_out
+
+    client[/"client.py"/]
     mcp_srv --> client
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class client ext
 ```
 
 ## 多会话架构
@@ -201,8 +243,8 @@ flowchart LR
     recv["recv()"] -->|"store()"| db["messages.db<br/>(SQLite WAL)"]
     send["send()"] -->|"store_sent()"| db
     fallback["Route C<br/>降级读取"] -->|"query_messages()"| db
-    history["get_message_history"] -->|"query()"| db
-    download["download_media"] -->|"get_by_id()"| db
+    history["history"] -->|"query()"| db
+    download["download"] -->|"get_by_id()"| db
 ```
 
 | 特性 | 描述 |

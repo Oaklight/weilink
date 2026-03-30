@@ -54,14 +54,17 @@ weilink openapi --host 0.0.0.0 -p 8000 --admin-port 8080
 
 ### 工具
 
-与 [MCP 服务器](mcp.md#可用工具) 相同的 6 个工具以 REST 端点暴露：
+与 [MCP 服务器](mcp.md#可用工具) 相同的 9 个工具以 REST 端点暴露：
 
-- `recv_messages` — 轮询接收新消息
-- `send_message` — 发送文本和/或媒体
-- `download_media` — 下载已接收消息中的媒体
-- `list_sessions` — 列出所有会话及其状态
-- `login` — 启动二维码登录流程
-- `check_login` — 检查待处理的登录状态
+- `recv` — 轮询接收新消息
+- `send` — 发送文本和/或媒体
+- `download` — 下载已接收消息中的媒体
+- `history` — 从持久化存储查询消息历史
+- `sessions` — 列出所有会话及其状态
+- `login` — 带内置轮询的二维码登录
+- `logout` — 登出会话
+- `rename_session` — 重命名会话
+- `set_default` — 设置默认会话
 
 ## 使用示例
 
@@ -74,7 +77,7 @@ curl http://localhost:8000/tools
 ### 接收消息
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/recv_messages \
+curl -X POST http://localhost:8000/tools/default/recv \
     -H "Content-Type: application/json" \
     -d '{"timeout": 5}'
 ```
@@ -82,7 +85,7 @@ curl -X POST http://localhost:8000/tools/default/recv_messages \
 ### 发送文本消息
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/send_message \
+curl -X POST http://localhost:8000/tools/default/send \
     -H "Content-Type: application/json" \
     -d '{"to": "user123@im.wechat", "text": "Hello from REST API!"}'
 ```
@@ -90,25 +93,23 @@ curl -X POST http://localhost:8000/tools/default/send_message \
 ### 列出会话
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/list_sessions \
+curl -X POST http://localhost:8000/tools/default/sessions \
     -H "Content-Type: application/json" \
     -d '{}'
 ```
 
-### 启动登录
+### 登录
 
 ```bash
+# 发起登录流程
 curl -X POST http://localhost:8000/tools/default/login \
     -H "Content-Type: application/json" \
     -d '{"session_name": ""}'
-```
 
-### 检查登录状态
-
-```bash
-curl -X POST http://localhost:8000/tools/default/check_login \
+# 轮询状态（重复调用）
+curl -X POST http://localhost:8000/tools/default/login \
     -H "Content-Type: application/json" \
-    -d '{}'
+    -d '{"timeout": 30}'
 ```
 
 ## Swagger UI

@@ -2,10 +2,20 @@
 
 ## 未发布
 
+### 破坏性变更
+
+- **重命名服务器工具以匹配 SDK** ([#6](https://github.com/Oaklight/weilink/issues/6)) — `recv_messages` → `recv`、`send_message` → `send`、`download_media` → `download`、`get_message_history` → `history`、`list_sessions` → `sessions`；工具名称现在与 SDK 方法名保持一致，三层 API 统一命名
+- **合并 `login` + `check_login` 为单个 `login` 工具** — `login` 工具现在是有状态的：首次调用发起二维码流程，后续调用以可配置超时（默认 30 秒）轮询直到状态变化；`check_login` 已移除
+
 ### 新功能
 
-- **SQLite 消息持久化** — 新增 `MessageStore`（`_store.py`），基于 SQLite WAL 模式存储所有收发消息到 `messages.db`；支持历史消息查询、防止重启后消息丢失、`download_media` 重启后仍可恢复；通过 `WeiLink(message_store=True)` 启用，MCP/OpenAPI 服务模式下默认开启
-- **`get_message_history` MCP 工具** — 按用户、bot、类型、方向、时间范围或文本内容查询历史消息；支持 `limit`/`offset` 分页
+- **SQLite 消息持久化** — 新增 `MessageStore`（`_store.py`），基于 SQLite WAL 模式存储所有收发消息到 `messages.db`；支持历史消息查询、防止重启后消息丢失、`download` 重启后仍可恢复；通过 `WeiLink(message_store=True)` 启用，MCP/OpenAPI 服务模式下默认开启
+- **`history` 服务器工具** — 按用户、bot、类型、方向、时间范围或文本内容查询历史消息；支持 `limit`/`offset` 分页
+- **`logout` 服务器工具** — 登出会话并移除持久化凭据
+- **`rename_session` 服务器工具** — 重命名会话
+- **`set_default` 服务器工具** — 设置默认会话
+- **Route C 协作式轮询** — 当 `message_store` 已启用且轮询锁被其他进程持有时，`recv()` 从 SQLite 读取最近消息而非返回空列表；无需中心服务器即可实现多客户端访问
+- **原子文件写入** — `token.json`、`contexts.json` 和 `.default_session` 现在通过临时文件 + `os.replace()` 写入，防止崩溃时文件损坏
 
 ## v0.4.3 (2026-03-30)
 
@@ -17,7 +27,7 @@
 ### 改进
 
 - **协议层增加调试日志** — `_protocol.py` 现在在 DEBUG/INFO 级别记录所有 HTTP 请求/响应、`get_updates` 消息数量、cursor 变化和错误详情，便于问题排查
-- **MCP `recv_messages` 增加调试日志** — `server/app.py` 记录轮询开始、消息数量和单条消息详情
+- **MCP `recv` 增加调试日志** — `server/app.py` 记录轮询开始、消息数量和单条消息详情
 - **Docker entrypoint 支持 PUID/PGID** — 新增 `entrypoint.sh`，运行时通过 `su-exec` 修正 `/data/weilink` 目录权限，支持 bind-mount 卷与宿主机用户权限匹配
 
 ## v0.4.2 (2026-03-28)
