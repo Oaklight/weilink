@@ -15,6 +15,7 @@
 - **`rename_session` server tool** — rename a session
 - **`set_default` server tool** — set a session as the default
 - **Route C cooperative polling** — when `message_store` is enabled and the poll lock is held by another process, `recv()` reads recent messages from SQLite instead of returning an empty list; enables multi-client access without a central server
+- **CLI bot commands** — new subcommands `login`, `logout`, `status`, `recv`, `send`, `download`, `history`, and `sessions` (with `rename`/`default` sub-subcommands); all commands support `--json` for machine-readable output and `-d, --base-path` for custom data directories
 - **Atomic file writes** — `token.json`, `contexts.json`, and `.default_session` are now written via temp-file + `os.replace()` to prevent corruption on crash
 
 ## v0.4.3 (2026-03-30)
