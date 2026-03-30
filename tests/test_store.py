@@ -372,3 +372,53 @@ class TestMigration:
         assert store2.get_by_id(42) is not None
         assert store2.get_by_id(42).text == "hello"
         store2.close()
+
+
+# ------------------------------------------------------------------
+# query_messages tests (Route C support)
+# ------------------------------------------------------------------
+
+
+class TestQueryMessages:
+    def test_returns_message_objects(self, store: MessageStore):
+        store.store([_make_text_msg(message_id=1)])
+        results = store.query_messages()
+        assert len(results) == 1
+        assert isinstance(results[0], Message)
+        assert results[0].text == "hello"
+
+    def test_filter_by_bot_id(self, store: MessageStore):
+        store.store(
+            [
+                _make_text_msg(message_id=1, bot_id="bot_a@im.bot"),
+                _make_text_msg(message_id=2, bot_id="bot_b@im.bot"),
+            ]
+        )
+        results = store.query_messages(bot_id="bot_a@im.bot")
+        assert len(results) == 1
+        assert results[0].bot_id == "bot_a@im.bot"
+
+    def test_filter_by_direction(self, store: MessageStore):
+        store.store([_make_text_msg(message_id=1)], direction=1)
+        store.store([_make_text_msg(message_id=2)], direction=2)
+        received = store.query_messages(direction=1)
+        assert len(received) == 1
+        assert received[0].message_id == 1
+
+    def test_filter_by_since_ms(self, store: MessageStore):
+        store.store(
+            [
+                _make_text_msg(message_id=1, timestamp=1000),
+                _make_text_msg(message_id=2, timestamp=2000),
+                _make_text_msg(message_id=3, timestamp=3000),
+            ]
+        )
+        results = store.query_messages(since_ms=2000)
+        assert len(results) == 2
+
+    def test_preserves_media_info(self, store: MessageStore):
+        store.store([_make_image_msg(message_id=10)])
+        results = store.query_messages()
+        assert len(results) == 1
+        assert results[0].image is not None
+        assert results[0].image.media.aes_key == "deadbeef"

@@ -488,6 +488,56 @@ class MessageStore:
                 logger.warning("Failed to deserialize message: %s", data_json[:100])
         return results
 
+    def query_messages(
+        self,
+        *,
+        bot_id: str | None = None,
+        direction: int | None = None,
+        since_ms: int | None = None,
+        limit: int = 200,
+    ) -> list[Message]:
+        """Query messages and return Message objects directly.
+
+        A lightweight variant of ``query()`` that skips the dict conversion,
+        intended for internal use by the cooperative-polling fallback
+        (Route C).
+
+        Args:
+            bot_id: Filter by bot session ID.
+            direction: Filter by direction (1=received, 2=sent).
+            since_ms: Start time (unix milliseconds, inclusive).
+            limit: Maximum results (capped at 200).
+
+        Returns:
+            List of Message objects, newest first.
+        """
+        limit = min(limit, 200)
+        clauses: list[str] = []
+        params: list[Any] = []
+
+        if bot_id:
+            clauses.append("bot_id = ?")
+            params.append(bot_id)
+        if direction is not None:
+            clauses.append("direction = ?")
+            params.append(direction)
+        if since_ms is not None:
+            clauses.append("timestamp_ms >= ?")
+            params.append(since_ms)
+
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        sql = f"SELECT data FROM messages{where} ORDER BY timestamp_ms DESC LIMIT ?"
+        params.append(limit)
+
+        rows = self._conn.execute(sql, params).fetchall()
+        results: list[Message] = []
+        for (data_json,) in rows:
+            try:
+                results.append(deserialize_message(data_json))
+            except (json.JSONDecodeError, KeyError, TypeError):
+                logger.warning("Failed to deserialize message: %s", data_json[:100])
+        return results
+
     def count(
         self,
         *,

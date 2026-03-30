@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from weilink.client import WeiLink
+from weilink.client import WeiLink, _atomic_write
 from weilink.models import BotInfo, MessageType, UploadMediaType, UploadedMedia
 
 
@@ -1450,3 +1450,169 @@ class TestCrossProcessLocking:
             wl_b._data_lock.unlock()
 
             wl_b.close()
+
+
+# ------------------------------------------------------------------
+# Atomic write tests
+# ------------------------------------------------------------------
+
+
+class TestAtomicWrite:
+    def test_writes_correct_content(self, tmp_path: Path):
+        target = tmp_path / "test.json"
+        _atomic_write(target, '{"key": "value"}')
+        assert target.read_text() == '{"key": "value"}'
+
+    def test_no_stale_tmp(self, tmp_path: Path):
+        target = tmp_path / "test.json"
+        _atomic_write(target, "data")
+        assert not (tmp_path / "test.json.tmp").exists()
+
+    def test_overwrites_existing(self, tmp_path: Path):
+        target = tmp_path / "test.json"
+        target.write_text("old")
+        _atomic_write(target, "new")
+        assert target.read_text() == "new"
+
+    def test_creates_file(self, tmp_path: Path):
+        target = tmp_path / "subdir" / "test.json"
+        target.parent.mkdir(parents=True)
+        _atomic_write(target, "created")
+        assert target.read_text() == "created"
+
+
+# ------------------------------------------------------------------
+# Route C cooperative polling tests
+# ------------------------------------------------------------------
+
+
+class TestRouteC:
+    """Test Route C: SQLite fallback when poll_lock is held."""
+
+    def _setup_session(self, base_path: Path) -> tuple:
+        """Create a WeiLink instance with a logged-in session and message store."""
+        token_path = base_path / "token.json"
+        token_path.write_text(
+            json.dumps(
+                {
+                    "bot_id": "bot1@im.bot",
+                    "base_url": "https://example.com",
+                    "token": "tok",
+                    "cursor": "c1",
+                }
+            )
+        )
+        wl = WeiLink(base_path=base_path, message_store=True)
+        session = wl._default_session
+        return wl, session
+
+    def test_fallback_returns_stored_messages(self, tmp_path: Path):
+        """When poll_lock is held and store is enabled, recv reads from SQLite."""
+        wl, session = self._setup_session(tmp_path)
+
+        from weilink.models import Message, MessageType
+
+        msg = Message(
+            from_user="user1@im.wechat",
+            msg_type=MessageType.TEXT,
+            text="hello from store",
+            timestamp=int(time.time() * 1000),
+            message_id=42,
+            bot_id="bot1@im.bot",
+        )
+        wl._message_store.store([msg], direction=1)
+
+        # Hold poll_lock so _recv_session falls back
+        wl._poll_lock.lock()
+        try:
+            # Create second instance sharing same base_path
+            wl_b = WeiLink(base_path=tmp_path, message_store=True)
+            result = wl_b._recv_session(wl_b._default_session, timeout=1)
+            assert len(result) == 1
+            assert result[0].text == "hello from store"
+            wl_b.close()
+        finally:
+            wl._poll_lock.unlock()
+            wl.close()
+
+    def test_no_store_returns_empty(self, tmp_path: Path):
+        """When poll_lock is held and no store, returns empty list."""
+        token_path = tmp_path / "token.json"
+        token_path.write_text(
+            json.dumps(
+                {
+                    "bot_id": "bot1@im.bot",
+                    "base_url": "https://example.com",
+                    "token": "tok",
+                    "cursor": "c1",
+                }
+            )
+        )
+        wl_a = WeiLink(base_path=tmp_path)
+        wl_a._poll_lock.lock()
+        try:
+            wl_b = WeiLink(base_path=tmp_path)
+            result = wl_b._recv_session(wl_b._default_session, timeout=1)
+            assert result == []
+            wl_b.close()
+        finally:
+            wl_a._poll_lock.unlock()
+            wl_a.close()
+
+    def test_fallback_only_received_messages(self, tmp_path: Path):
+        """Fallback returns only direction=1 (received), not sent messages."""
+        wl, session = self._setup_session(tmp_path)
+
+        from weilink.models import Message, MessageType
+
+        recv_msg = Message(
+            from_user="user1@im.wechat",
+            msg_type=MessageType.TEXT,
+            text="received",
+            timestamp=int(time.time() * 1000),
+            message_id=10,
+            bot_id="bot1@im.bot",
+        )
+        wl._message_store.store([recv_msg], direction=1)
+        wl._message_store.store_sent(
+            user_id="user1@im.wechat", bot_id="bot1@im.bot", text="sent"
+        )
+
+        wl._poll_lock.lock()
+        try:
+            wl_b = WeiLink(base_path=tmp_path, message_store=True)
+            result = wl_b._recv_session(wl_b._default_session, timeout=1)
+            assert len(result) == 1
+            assert result[0].text == "received"
+            wl_b.close()
+        finally:
+            wl._poll_lock.unlock()
+            wl.close()
+
+    def test_fallback_respects_time_window(self, tmp_path: Path):
+        """Messages older than _FALLBACK_WINDOW are not returned."""
+        wl, session = self._setup_session(tmp_path)
+
+        from weilink.client import _FALLBACK_WINDOW
+        from weilink.models import Message, MessageType
+
+        old_ts = int((time.time() - _FALLBACK_WINDOW - 10) * 1000)
+        old_msg = Message(
+            from_user="user1@im.wechat",
+            msg_type=MessageType.TEXT,
+            text="old message",
+            timestamp=old_ts,
+            message_id=99,
+            bot_id="bot1@im.bot",
+        )
+        wl._message_store.store([old_msg], direction=1)
+
+        wl._poll_lock.lock()
+        try:
+            wl_b = WeiLink(base_path=tmp_path, message_store=True)
+            result = wl_b._recv_session(wl_b._default_session, timeout=1)
+            assert result == []
+            wl_b.close()
+        finally:
+            wl._poll_lock.unlock()
+            wl.close()

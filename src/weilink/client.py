@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import queue
 import signal
 import threading
@@ -39,6 +40,14 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_PATH = Path.home() / ".weilink"
 _DEFAULT_SESSION = "default"
+_FALLBACK_WINDOW = 60  # seconds: time window for Route C degraded SQLite reads
+
+
+def _atomic_write(path: Path, data: str) -> None:
+    """Write *data* to *path* atomically via a temp file + rename."""
+    tmp = path.parent / (path.name + ".tmp")
+    tmp.write_text(data)
+    os.replace(tmp, path)
 
 
 @dataclass
@@ -285,7 +294,7 @@ class WeiLink:
         """Persist the current default session name to disk."""
         self._base_path.mkdir(parents=True, exist_ok=True)
         p = self._base_path / self._DEFAULT_SESSION_FILE
-        p.write_text(self._default_session.name)
+        _atomic_write(p, self._default_session.name)
 
     # ------------------------------------------------------------------
     # Session management
@@ -474,7 +483,7 @@ class WeiLink:
                 "cursor": session.cursor,
                 "created_at": session.created_at,
             }
-            session.token_path.write_text(json.dumps(data, indent=2))
+            _atomic_write(session.token_path, json.dumps(data, indent=2))
 
     @staticmethod
     def _load_session_contexts(session: _Session) -> None:
@@ -548,7 +557,7 @@ class WeiLink:
                 data[user_id] = entry
         with session._io_lock:
             session.token_path.parent.mkdir(parents=True, exist_ok=True)
-            session.contexts_path.write_text(json.dumps(data, indent=2))
+            _atomic_write(session.contexts_path, json.dumps(data, indent=2))
 
     @staticmethod
     def _merge_contexts_from_disk(session: _Session, updated_users: set[str]) -> None:
@@ -905,12 +914,44 @@ class WeiLink:
 
         # Cross-process: only one process may poll at a time.
         if not self._poll_lock.try_lock():
+            # Route C: fall back to SQLite store when another process is polling.
+            if self._message_store is not None:
+                return self._recv_from_store(session)
             return []
 
         try:
             return self._recv_session_locked(session, timeout)
         finally:
             self._poll_lock.unlock()
+
+    def _recv_from_store(self, session: _Session) -> list[Message]:
+        """Read recent messages from SQLite when live polling is unavailable.
+
+        This is the Route C fallback: when the poll lock is held by another
+        process, read messages that the primary poller already stored.
+        No cursor or context_token updates are performed.
+        """
+        assert session.bot_info is not None
+        assert self._message_store is not None
+
+        since_ms = int((time.time() - _FALLBACK_WINDOW) * 1000)
+        messages = self._message_store.query_messages(
+            bot_id=session.bot_info.bot_id,
+            direction=1,
+            since_ms=since_ms,
+        )
+        if messages:
+            logger.info(
+                "Route C fallback: read %d message(s) from store for session %s",
+                len(messages),
+                session.name,
+            )
+        else:
+            logger.debug(
+                "Route C fallback: no recent messages in store for session %s",
+                session.name,
+            )
+        return messages
 
     def _recv_session_locked(self, session: _Session, timeout: float) -> list[Message]:
         """Long-poll implementation, called with poll_lock held."""
