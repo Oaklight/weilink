@@ -17,6 +17,16 @@
 - **Route C cooperative polling** — when `message_store` is enabled and the poll lock is held by another process, `recv()` reads recent messages from SQLite instead of returning an empty list; enables multi-client access without a central server
 - **CLI bot commands** — new subcommands `login`, `logout`, `status`, `recv`, `send`, `download`, `history`, and `sessions` (with `rename`/`default` sub-subcommands); all commands support `--json` for machine-readable output and `-d, --base-path` for custom data directories
 - **Atomic file writes** — `token.json`, `contexts.json`, and `.default_session` are now written via temp-file + `os.replace()` to prevent corruption on crash
+- **Admin panel message history** — slide-out chat drawer showing per-user conversation with WeChat-style bubbles; supports all message types, pagination, type filtering, and text search
+- **Lazy media download in admin panel** — download button on media messages fetches from CDN on demand via `GET /api/messages/<id>/download`
+
+### Improvements
+
+- **Admin panel i18n** — dynamic content re-renders on language switch; added localized download button and sender labels
+
+### Bug Fixes
+
+- **Fix message_id precision in admin API** — 19-digit message IDs serialized as strings in `/api/messages` response to prevent JavaScript integer truncation
 
 ## v0.4.3 (2026-03-30)
 

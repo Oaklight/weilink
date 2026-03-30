@@ -20,7 +20,7 @@ The main page shows an overview of all sessions:
 - Total sessions, connected count, and active users
 - Connection status indicator
 
-![Admin Panel Dashboard](../assets/admin_panel.png)
+![Admin Panel Dashboard](../assets/admin_dashboard.png)
 
 ### Session Management
 
@@ -40,12 +40,34 @@ Click **New Login** to start a QR code login flow:
 
 QR codes expire after 5 minutes and can be refreshed manually.
 
+![QR Code Login](../assets/admin_login.png)
+
 ### User Tracking
 
 Expand a session row to see per-user details:
 
 - First seen / last message received / last message sent timestamps
 - Token status (active or expired after 24 hours of inactivity)
+
+![User Details](../assets/admin_user_details.png)
+
+### Message History
+
+When message persistence is enabled (`message_store=True`), each user row shows a **View Messages** button. Click it to open a chat drawer with:
+
+- **WeChat-style bubbles** — received messages on the left (gray), sent messages on the right (green), with sender labels and curved bubble tails
+- **Message types** — text, image, voice, file, and video messages with type-specific icons and metadata (dimensions, duration, filename)
+- **Lazy media download** — click the download button below any media message to fetch it from CDN on demand; no local caching
+- **Pagination** — "Load older messages" button at the top
+- **Filtering** — filter by message type dropdown or search text content
+
+Message persistence is enabled by default in MCP and OpenAPI server mode. To enable it in the SDK:
+
+```python
+wl = WeiLink(message_store=True)
+```
+
+![Message History Drawer](../assets/admin_messages.png)
 
 ### Localization
 
