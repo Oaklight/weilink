@@ -71,7 +71,14 @@ pip install weilink[server]
 weilink admin -p 8080
 ```
 
-![管理面板](https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_panel.png)
+<table>
+<tr>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_dashboard.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_dashboard.png" width="240" alt="仪表盘"></a><br><sub>仪表盘</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_user_details.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_user_details.png" width="240" alt="用户详情"></a><br><sub>用户详情</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_messages.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_messages.png" width="240" alt="消息历史"></a><br><sub>消息历史</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_login.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_login.png" width="240" alt="扫码登录"></a><br><sub>扫码登录</sub></td>
+</tr>
+</table>
 
 ## API
 
