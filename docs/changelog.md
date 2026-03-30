@@ -17,6 +17,16 @@
 - **Route C 协作式轮询** — 当 `message_store` 已启用且轮询锁被其他进程持有时，`recv()` 从 SQLite 读取最近消息而非返回空列表；无需中心服务器即可实现多客户端访问
 - **CLI Bot 命令** — 新增 `login`、`logout`、`status`、`recv`、`send`、`download`、`history` 和 `sessions`（含 `rename`/`default` 子命令）子命令；所有命令支持 `--json` 输出机器可读格式，以及 `-d, --base-path` 自定义数据目录
 - **原子文件写入** — `token.json`、`contexts.json` 和 `.default_session` 现在通过临时文件 + `os.replace()` 写入，防止崩溃时文件损坏
+- **管理面板消息历史** — 滑出式消息抽屉，以微信风格气泡展示每个用户的对话记录；支持所有消息类型、分页、类型过滤和文本搜索
+- **管理面板懒加载下载** — 媒体消息上的下载按钮通过 `GET /api/messages/<id>/download` 按需从 CDN 拉取文件
+
+### 改进
+
+- **管理面板 i18n 改进** — 切换语言时动态内容重新渲染；新增本地化的下载按钮和发送者标签
+
+### 问题修复
+
+- **修复管理面板 API 消息 ID 精度** — 19 位 message_id 在 `/api/messages` 响应中序列化为字符串，防止 JavaScript 整数精度丢失
 
 ## v0.4.3 (2026-03-30)
 
