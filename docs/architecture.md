@@ -4,6 +4,10 @@ This page describes the internal architecture of WeiLink, including module struc
 
 ## Package Structure
 
+The package is organized into three groups: the core SDK, the admin panel, and the server/MCP layer.
+
+### Core SDK Modules
+
 ```mermaid
 graph TB
     subgraph "weilink package"
@@ -19,12 +23,57 @@ graph TB
         filelock["_filelock.py<br/><i>Cross-process file locks</i>"]
     end
 
+    client --> protocol
+    client --> cdn
+    client --> models
+    client --> store
+    client --> filelock
+    cdn --> crypto
+    crypto --> aes_ssl
+    crypto -.->|fallback| aes_py
+
+    admin[/"weilink.admin"/]
+    server[/"weilink.server"/]
+    client --> admin
+    admin -.-> client
+    admin -.-> protocol
+    admin -.-> qr
+    server -.-> client
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class admin,server ext
+```
+
+### Admin Panel Modules
+
+```mermaid
+graph TB
     subgraph "weilink.admin"
         admin_srv["server.py<br/><i>AdminServer (daemon thread)</i>"]
         admin_hdl["handlers.py<br/><i>REST API handlers</i>"]
         admin_stc["static.py<br/><i>HTML & locale loading</i>"]
     end
 
+    admin_srv --> admin_hdl
+    admin_hdl --> admin_stc
+
+    client[/"client.py"/]
+    protocol[/"_protocol.py"/]
+    qr[/"_qr.py"/]
+
+    client --> admin_srv
+    admin_hdl --> client
+    admin_hdl --> protocol
+    admin_hdl --> qr
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class client,protocol,qr ext
+```
+
+### Server & MCP Modules
+
+```mermaid
+graph TB
     subgraph "weilink.server"
         mcp_srv["app.py<br/><i>Tool definitions</i>"]
     end
@@ -35,22 +84,15 @@ graph TB
         openapi_out["OpenAPI transport<br/><i>REST + Swagger UI</i>"]
     end
 
-    client --> protocol
-    client --> cdn
-    client --> models
-    client --> admin_srv
-    client --> store
-    client --> filelock
-    cdn --> crypto
-    crypto --> aes_ssl
-    crypto -.->|fallback| aes_py
-    admin_hdl --> protocol
-    admin_hdl --> qr
-    admin_hdl --> client
     mcp_srv --> tr
     tr --> mcp_out
     tr --> openapi_out
+
+    client[/"client.py"/]
     mcp_srv --> client
+
+    classDef ext fill:#f5f5f5,stroke:#999,stroke-dasharray:5 5
+    class client ext
 ```
 
 ## Multi-Session Architecture
@@ -201,8 +243,8 @@ flowchart LR
     recv["recv()"] -->|"store()"| db["messages.db<br/>(SQLite WAL)"]
     send["send()"] -->|"store_sent()"| db
     fallback["Route C<br/>fallback"] -->|"query_messages()"| db
-    history["get_message_history"] -->|"query()"| db
-    download["download_media"] -->|"get_by_id()"| db
+    history["history"] -->|"query()"| db
+    download["download"] -->|"get_by_id()"| db
 ```
 
 | Feature | Description |

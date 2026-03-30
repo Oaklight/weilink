@@ -127,7 +127,7 @@ Add to MCP settings:
 
 ## Available Tools
 
-### `recv_messages`
+### `recv`
 
 Poll for new messages from WeChat users.
 
@@ -137,7 +137,7 @@ Poll for new messages from WeChat users.
 
 Returns a JSON array of messages. Each message includes `message_id`, `from_user`, `msg_type`, `text`, `timestamp`, `bot_id`, and media metadata if applicable.
 
-### `send_message`
+### `send`
 
 Send text and/or media to a WeChat user.
 
@@ -152,32 +152,84 @@ Send text and/or media to a WeChat user.
 | `voice_path` | str | `""` | Local voice file path |
 
 !!! note "Auto-recv"
-    The MCP server automatically calls `recv()` before each send to refresh context tokens. This ensures the bot has a valid token even if `recv_messages` hasn't been called recently.
+    The MCP server automatically calls `recv()` before each send to refresh context tokens. This ensures the bot has a valid token even if `recv` hasn't been called recently.
 
-### `download_media`
+### `download`
 
 Download media from a previously received message.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `message_id` | str | *(required)* | Message ID from `recv_messages` |
+| `message_id` | str | *(required)* | Message ID from `recv` |
 | `save_dir` | str | `~/.weilink/downloads/` | Directory to save the file |
 
 Returns the saved file path and size.
 
-### `list_sessions`
+### `history`
+
+Query message history from the persistent store.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `user_id` | str | `""` | Filter by WeChat user ID |
+| `bot_id` | str | `""` | Filter by bot session ID |
+| `msg_type` | str | `""` | Filter by type: `TEXT`, `IMAGE`, `VOICE`, `FILE`, `VIDEO` |
+| `direction` | str | `""` | Filter: `received` or `sent` |
+| `since` | str | `""` | Start time (ISO 8601 or unix ms) |
+| `until` | str | `""` | End time (ISO 8601 or unix ms) |
+| `text_contains` | str | `""` | Case-insensitive text search |
+| `limit` | int | 50 | Max results (up to 200) |
+| `offset` | int | 0 | Pagination offset |
+
+Returns JSON with `messages` array, `total` count, `limit`, and `offset`.
+
+### `sessions`
 
 List all sessions with their connection status. No parameters.
 
-### `login` / `check_login`
+### `login`
 
-Two-step login flow for QR code authentication:
+QR code login with built-in polling. The tool is stateful — its behavior depends on whether a login flow is already in progress:
 
-1. Call `login(session_name="")` — returns a QR code URL for the user to scan.
-2. Call `check_login()` repeatedly — returns the scan status (`pending`, `scanned`, `confirmed`, or `expired`).
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_name` | str | `""` | Session name (empty for default) |
+| `timeout` | float | 30.0 | Max seconds to poll for status change |
+| `force` | bool | false | Restart QR flow even if one is pending |
+
+**Typical agent workflow:**
+
+1. Call `login()` — returns `{"status": "pending", "qr_url": "..."}`. Show the QR URL to the user.
+2. Call `login()` again — polls for up to 30s, returns `{"status": "scanned"}` or `{"status": "confirmed", ...}`.
+3. If still pending, call `login()` once more until confirmed or expired.
 
 !!! note "Pre-login recommended"
-    The server auto-discovers existing sessions from `~/.weilink/` on startup. If you have already logged in via the SDK, the MCP server picks up your sessions automatically — no need to call the login tools.
+    The server auto-discovers existing sessions from `~/.weilink/` on startup. If you have already logged in via the SDK, the MCP server picks up your sessions automatically — no need to call the login tool.
+
+### `logout`
+
+Log out a session and remove its persisted credentials.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_name` | str | `""` | Session to log out (empty for default) |
+
+### `rename_session`
+
+Rename a session.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `old_name` | str | *(required)* | Current session name |
+| `new_name` | str | *(required)* | New session name |
+
+### `set_default`
+
+Set a session as the default.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `session_name` | str | *(required)* | Session name to make default |
 
 ## Architecture
 
@@ -188,7 +240,7 @@ graph LR
     C --> D[WeChat]
 ```
 
-The MCP server wraps a `WeiLink` instance internally. Messages received via `recv_messages` are cached (up to 1000) so their media can be downloaded later via `download_media`.
+The MCP server wraps a `WeiLink` instance internally. Messages received via `recv` are cached (up to 1000) so their media can be downloaded later via `download`.
 
 ## Skills Metadata
 

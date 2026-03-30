@@ -54,14 +54,17 @@ Once the server is running, the following endpoints are available:
 
 ### Tools
 
-The same 6 tools available in the [MCP server](mcp.md#available-tools) are exposed as REST endpoints:
+The same 9 tools available in the [MCP server](mcp.md#available-tools) are exposed as REST endpoints:
 
-- `recv_messages` — poll for new messages
-- `send_message` — send text and/or media
-- `download_media` — download media from a received message
-- `list_sessions` — list all sessions and their status
-- `login` — start QR code login flow
-- `check_login` — check pending login status
+- `recv` — poll for new messages
+- `send` — send text and/or media
+- `download` — download media from a received message
+- `history` — query message history from persistent store
+- `sessions` — list all sessions and their status
+- `login` — QR code login with built-in polling
+- `logout` — log out a session
+- `rename_session` — rename a session
+- `set_default` — set a session as the default
 
 ## Example Usage
 
@@ -74,7 +77,7 @@ curl http://localhost:8000/tools
 ### Receive messages
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/recv_messages \
+curl -X POST http://localhost:8000/tools/default/recv \
     -H "Content-Type: application/json" \
     -d '{"timeout": 5}'
 ```
@@ -82,7 +85,7 @@ curl -X POST http://localhost:8000/tools/default/recv_messages \
 ### Send a text message
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/send_message \
+curl -X POST http://localhost:8000/tools/default/send \
     -H "Content-Type: application/json" \
     -d '{"to": "user123@im.wechat", "text": "Hello from REST API!"}'
 ```
@@ -90,25 +93,23 @@ curl -X POST http://localhost:8000/tools/default/send_message \
 ### List sessions
 
 ```bash
-curl -X POST http://localhost:8000/tools/default/list_sessions \
+curl -X POST http://localhost:8000/tools/default/sessions \
     -H "Content-Type: application/json" \
     -d '{}'
 ```
 
-### Start login
+### Login
 
 ```bash
+# Start login flow
 curl -X POST http://localhost:8000/tools/default/login \
     -H "Content-Type: application/json" \
     -d '{"session_name": ""}'
-```
 
-### Check login status
-
-```bash
-curl -X POST http://localhost:8000/tools/default/check_login \
+# Poll for status (call repeatedly)
+curl -X POST http://localhost:8000/tools/default/login \
     -H "Content-Type: application/json" \
-    -d '{}'
+    -d '{"timeout": 30}'
 ```
 
 ## Swagger UI

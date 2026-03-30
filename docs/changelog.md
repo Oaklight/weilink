@@ -2,10 +2,20 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+- **Rename server tools to match SDK** ([#6](https://github.com/Oaklight/weilink/issues/6)) — `recv_messages` → `recv`, `send_message` → `send`, `download_media` → `download`, `get_message_history` → `history`, `list_sessions` → `sessions`; tool names now mirror the SDK method names for consistency across all three API layers
+- **Merge `login` + `check_login` into single `login` tool** — the `login` tool is now stateful: first call starts a QR flow, subsequent calls poll with a configurable timeout (default 30s) until status changes; `check_login` has been removed
+
 ### New Features
 
-- **SQLite message persistence** — new `MessageStore` (`_store.py`) backed by SQLite WAL mode stores all received and sent messages to `messages.db`; enables message history queries, prevents message loss across restarts, and provides a `download_media` fallback after server restart; opt-in via `WeiLink(message_store=True)`, enabled by default in MCP/OpenAPI server mode
-- **`get_message_history` MCP tool** — query past messages by user, bot, type, direction, time range, or text content; supports pagination with `limit`/`offset`
+- **SQLite message persistence** — new `MessageStore` (`_store.py`) backed by SQLite WAL mode stores all received and sent messages to `messages.db`; enables message history queries, prevents message loss across restarts, and provides a `download` fallback after server restart; opt-in via `WeiLink(message_store=True)`, enabled by default in MCP/OpenAPI server mode
+- **`history` server tool** — query past messages by user, bot, type, direction, time range, or text content; supports pagination with `limit`/`offset`
+- **`logout` server tool** — log out a session and remove persisted credentials
+- **`rename_session` server tool** — rename a session
+- **`set_default` server tool** — set a session as the default
+- **Route C cooperative polling** — when `message_store` is enabled and the poll lock is held by another process, `recv()` reads recent messages from SQLite instead of returning an empty list; enables multi-client access without a central server
+- **Atomic file writes** — `token.json`, `contexts.json`, and `.default_session` are now written via temp-file + `os.replace()` to prevent corruption on crash
 
 ## v0.4.3 (2026-03-30)
 
@@ -17,7 +27,7 @@
 ### Improvements
 
 - **Add debug logging to protocol layer** — `_protocol.py` now logs all HTTP requests/responses, `get_updates` message counts, cursor changes, and error details at DEBUG/INFO level for easier troubleshooting
-- **Add debug logging to MCP `recv_messages`** — `server/app.py` logs polling start, message counts, and individual message details
+- **Add debug logging to MCP `recv`** — `server/app.py` logs polling start, message counts, and individual message details
 - **Add Docker entrypoint with PUID/PGID support** — new `entrypoint.sh` fixes `/data/weilink` ownership at runtime via `su-exec`, allowing bind-mounted volumes to match host user permissions
 
 ## v0.4.2 (2026-03-28)
