@@ -15,6 +15,8 @@ graph TB
         aes_ssl["_aes_openssl.py<br/><i>ctypes + OpenSSL</i>"]
         aes_py["_aes.py<br/><i>Pure-Python AES fallback</i>"]
         qr["_qr.py<br/><i>QR code generation</i>"]
+        store["_store.py<br/><i>SQLite message persistence</i>"]
+        filelock["_filelock.py<br/><i>Cross-process file locks</i>"]
     end
 
     subgraph "weilink.admin"
@@ -37,6 +39,8 @@ graph TB
     client --> cdn
     client --> models
     client --> admin_srv
+    client --> store
+    client --> filelock
     cdn --> crypto
     crypto --> aes_ssl
     crypto -.->|fallback| aes_py
@@ -143,24 +147,86 @@ flowchart TD
         poll_lock[".poll.lock<br/><i>non-blocking exclusive</i>"]
         data_lock[".data.lock<br/><i>blocking exclusive (brief)</i>"]
         files["token.json<br/>contexts.json"]
+        db["messages.db<br/><i>(SQLite WAL)</i>"]
     end
 
     A_recv -->|"try_lock"| poll_lock
-    B_recv -->|"try_lock (fails → [])"| poll_lock
+    B_recv -->|"try_lock (fails → SQLite fallback)"| poll_lock
     A_send -->|"lock"| data_lock
     B_send -->|"lock"| data_lock
     poll_lock -.-> files
     data_lock -.-> files
+    A_recv -.->|"store()"| db
+    B_recv -.->|"query_messages()"| db
 ```
 
 | Lock | Scope | Behavior |
 |------|-------|----------|
-| `.poll.lock` | Entire `recv()` cycle | Non-blocking try-lock. If held by another process, `recv()` returns `[]` immediately. Prevents cursor divergence. |
+| `.poll.lock` | Entire `recv()` cycle | Non-blocking try-lock. If held by another process, `recv()` falls back to SQLite (when enabled) or returns `[]`. Prevents cursor divergence. |
 | `.data.lock` | File read-modify-write | Blocking, held briefly (~ms). Serializes `token.json` / `contexts.json` access for both `recv()` and `send()`. |
 
 **Key principle:** disk is the source of truth. Every `recv()` and `send()` re-reads state from disk under the data lock before acting, ensuring changes from other processes are visible.
 
+**Atomic file writes:** All writes to `token.json`, `contexts.json`, and `.default_session` use a write-to-temp-then-`os.replace()` pattern, ensuring that a process crash mid-write never produces a corrupted file.
+
 On Windows, file locking is skipped (no `fcntl`) and WeiLink operates as before.
+
+### Route C — Cooperative Polling Fallback
+
+When `message_store` is enabled and the poll lock is held by another process, `recv()` reads recent messages (last 60 seconds) from the SQLite store instead of returning an empty list. This allows secondary processes to observe messages without conflicting with the primary poller's cursor.
+
+```mermaid
+flowchart TD
+    A["recv()"] --> B{"try_lock<br/>poll_lock"}
+    B -->|acquired| C["Poll iLink API"]
+    C --> D["Store messages<br/>to SQLite"]
+    D --> E["Update cursor<br/>& context_tokens"]
+    E --> F["Return messages"]
+    B -->|"failed"| G{"message_store<br/>enabled?"}
+    G -->|yes| H["Query SQLite<br/>(last 60s, direction=received)"]
+    H --> I["Return messages<br/>(no state updates)"]
+    G -->|no| J["Return []"]
+```
+
+No cursor or context-token updates occur during a fallback read — the messages were already fully processed when the primary poller stored them. This makes the fallback purely read-only and safe.
+
+**Activation:** automatic when both conditions are true: the poll lock is held by another process, and `message_store` is enabled (`message_store=True`).
+
+## Message Persistence (SQLite Store)
+
+WeiLink includes an optional SQLite-backed message store that records all received and sent messages with full serialization (preserving CDN references for later media download).
+
+```mermaid
+flowchart LR
+    recv["recv()"] -->|"store()"| db["messages.db<br/>(SQLite WAL)"]
+    send["send()"] -->|"store_sent()"| db
+    fallback["Route C<br/>fallback"] -->|"query_messages()"| db
+    history["get_message_history"] -->|"query()"| db
+    download["download_media"] -->|"get_by_id()"| db
+```
+
+| Feature | Description |
+|---------|-------------|
+| **WAL mode** | Concurrent readers + single writer. Readers never block writers, and vice versa. |
+| **Idempotent writes** | `INSERT OR IGNORE` on `message_id` prevents duplicates. |
+| **Auto-pruning** | Configurable by age (default 30 days) and count (default 100,000). |
+| **Thread-safe** | Internal write lock + SQLite's own locking. |
+| **Cross-process safe** | SQLite WAL handles concurrent access from multiple processes. |
+
+### Enabling
+
+- **Server mode**: always enabled (`message_store=True` by default in server).
+- **SDK mode**: opt-in via `WeiLink(message_store=True)` or `WeiLink(message_store="/path/to/messages.db")`.
+- **Disabled** (default for SDK): single-client mode, no SQLite dependency at runtime.
+
+### Multi-Client Coordination Summary
+
+WeiLink supports multiple processes sharing the same data directory through four mechanisms:
+
+1. **Poll lock** (`.poll.lock`): ensures only one process polls iLink at a time, preventing cursor divergence.
+2. **Data lock** (`.data.lock`): serializes reads and writes to `token.json` and `contexts.json`.
+3. **Route C fallback**: when the poll lock is unavailable and SQLite persistence is enabled, secondary processes read recent messages from the database.
+4. **Atomic writes**: all file writes use temp-file-then-rename to prevent corruption on crash.
 
 ## QR Code Login Flow
 
