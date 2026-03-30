@@ -71,7 +71,14 @@ pip install weilink[server]
 weilink admin -p 8080
 ```
 
-![Admin Panel](https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_panel.png)
+<table>
+<tr>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_dashboard.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_dashboard.png" width="240" alt="Dashboard"></a><br><sub>Dashboard</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_user_details.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_user_details.png" width="240" alt="User Details"></a><br><sub>User Details</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_messages.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_messages.png" width="240" alt="Message History"></a><br><sub>Message History</sub></td>
+<td align="center"><a href="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_login.png"><img src="https://raw.githubusercontent.com/Oaklight/weilink/docs_en/docs/assets/admin_login.png" width="240" alt="QR Login"></a><br><sub>QR Login</sub></td>
+</tr>
+</table>
 
 ## API
 
