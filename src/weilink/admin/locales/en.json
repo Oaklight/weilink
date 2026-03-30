@@ -83,6 +83,7 @@
     "view_messages": "View Messages",
     "sender_human": "Human",
     "sender_bot": "Bot",
-    "download_failed": "Download failed"
+    "download_failed": "Download failed",
+    "download": "Download"
   }
 }

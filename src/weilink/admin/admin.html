@@ -570,14 +570,23 @@ tr:hover td { background: var(--bg-hover); }
   font-size: 13px;
 }
 .bubble-download {
-  text-decoration: none;
-  color: inherit;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 2px;
-  transition: opacity 0.15s;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 16px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.06);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
 }
-.bubble-download:hover { opacity: 0.7; }
+.bubble-download:hover { background: rgba(0,0,0,0.1); }
+.bubble-download svg { flex-shrink: 0; }
 .bubble-ref {
   border-left: 3px solid var(--border);
   padding: 2px 8px;
@@ -792,6 +801,7 @@ class I18n {
     }
     document.documentElement.lang = lang;
     this.updatePage();
+    refreshAll();
   }
 
   t(key, params = {}) {
@@ -1383,10 +1393,11 @@ function renderBubbles(messages, prepend) {
       content += escapeHtml(msg.text || `[${msgType}]`);
     }
 
-    // Wrap media content in download link
+    // Add download button below media content
     if (msg.message_id && msgType !== 'TEXT') {
       const dlUrl = `/api/messages/${msg.message_id}/download`;
-      content = `<a href="${dlUrl}" target="_blank" download class="bubble-download">${content} \u2b07</a>`;
+      const dlIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+      content += `<a href="${dlUrl}" target="_blank" download class="bubble-download">${dlIcon} ${i18n.t('messages.download')}</a>`;
     }
 
     const timeStr = formatBubbleTime(ts);
