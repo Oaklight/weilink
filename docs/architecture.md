@@ -15,6 +15,8 @@ graph TB
         aes_ssl["_aes_openssl.py<br/><i>ctypes + OpenSSL</i>"]
         aes_py["_aes.py<br/><i>纯 Python AES 后备</i>"]
         qr["_qr.py<br/><i>二维码生成</i>"]
+        store["_store.py<br/><i>SQLite 消息持久化</i>"]
+        filelock["_filelock.py<br/><i>跨进程文件锁</i>"]
     end
 
     subgraph "weilink.admin"
@@ -37,6 +39,8 @@ graph TB
     client --> cdn
     client --> models
     client --> admin_srv
+    client --> store
+    client --> filelock
     cdn --> crypto
     crypto --> aes_ssl
     crypto -.->|后备| aes_py
@@ -143,24 +147,86 @@ flowchart TD
         poll_lock[".poll.lock<br/><i>非阻塞排他锁</i>"]
         data_lock[".data.lock<br/><i>阻塞排他锁（短暂持有）</i>"]
         files["token.json<br/>contexts.json"]
+        db["messages.db<br/><i>(SQLite WAL)</i>"]
     end
 
     A_recv -->|"try_lock"| poll_lock
-    B_recv -->|"try_lock（失败 → []）"| poll_lock
+    B_recv -->|"try_lock（失败 → SQLite 降级）"| poll_lock
     A_send -->|"lock"| data_lock
     B_send -->|"lock"| data_lock
     poll_lock -.-> files
     data_lock -.-> files
+    A_recv -.->|"store()"| db
+    B_recv -.->|"query_messages()"| db
 ```
 
 | 锁 | 作用范围 | 行为 |
 |----|----------|------|
-| `.poll.lock` | 整个 `recv()` 周期 | 非阻塞 try-lock。被其他进程持有时，`recv()` 立即返回 `[]`。防止 cursor 分叉。 |
+| `.poll.lock` | 整个 `recv()` 周期 | 非阻塞 try-lock。被其他进程持有时，`recv()` 降级从 SQLite 读取（如已启用），否则返回 `[]`。防止 cursor 分叉。 |
 | `.data.lock` | 文件读-改-写 | 阻塞式，短暂持有（~毫秒级）。序列化 `token.json` / `contexts.json` 的访问，`recv()` 和 `send()` 均使用。 |
 
 **核心原则：** 磁盘是唯一事实来源。每次 `recv()` 和 `send()` 在数据锁下重新从磁盘读取状态后再执行操作，确保其他进程的变更可见。
 
+**原子文件写入：** 所有对 `token.json`、`contexts.json` 和 `.default_session` 的写入均使用"写临时文件 + `os.replace()`"模式，确保进程崩溃不会产生损坏的文件。
+
 在 Windows 上，文件锁被跳过（无 `fcntl`），WeiLink 的行为与之前一致。
+
+### Route C — 协作式轮询降级
+
+当启用 `message_store` 且轮询锁被其他进程持有时，`recv()` 从 SQLite 存储中读取最近的消息（最近 60 秒），而不是返回空列表。这使得次级进程无需与主轮询者的 cursor 冲突即可获取消息。
+
+```mermaid
+flowchart TD
+    A["recv()"] --> B{"try_lock<br/>poll_lock"}
+    B -->|获取成功| C["轮询 iLink API"]
+    C --> D["消息存入 SQLite"]
+    D --> E["更新 cursor<br/>和 context_tokens"]
+    E --> F["返回消息"]
+    B -->|"获取失败"| G{"已启用<br/>message_store？"}
+    G -->|是| H["查询 SQLite<br/>（最近 60 秒，仅接收方向）"]
+    H --> I["返回消息<br/>（不更新状态）"]
+    G -->|否| J["返回 []"]
+```
+
+降级读取期间不会更新 cursor 或 context_token — 这些消息在主轮询者存储时已完成处理。降级读取是纯只读操作，完全安全。
+
+**激活条件：** 同时满足两个条件时自动启用：轮询锁被其他进程持有，且 `message_store` 已启用（`message_store=True`）。
+
+## 消息持久化（SQLite 存储）
+
+WeiLink 包含一个可选的 SQLite 消息存储后端，记录所有收发消息的完整序列化数据（保留 CDN 引用以便后续媒体下载）。
+
+```mermaid
+flowchart LR
+    recv["recv()"] -->|"store()"| db["messages.db<br/>(SQLite WAL)"]
+    send["send()"] -->|"store_sent()"| db
+    fallback["Route C<br/>降级读取"] -->|"query_messages()"| db
+    history["get_message_history"] -->|"query()"| db
+    download["download_media"] -->|"get_by_id()"| db
+```
+
+| 特性 | 描述 |
+|------|------|
+| **WAL 模式** | 并发读者 + 单写者。读者不阻塞写者，写者不阻塞读者。 |
+| **幂等写入** | 基于 `message_id` 的 `INSERT OR IGNORE`，防止重复写入。 |
+| **自动清理** | 可配置按时间（默认 30 天）和条数（默认 10 万条）清理。 |
+| **线程安全** | 内部写锁 + SQLite 自身锁机制。 |
+| **跨进程安全** | SQLite WAL 模式处理多进程并发访问。 |
+
+### 启用方式
+
+- **Server 模式**：始终启用（server 中默认 `message_store=True`）。
+- **SDK 模式**：通过 `WeiLink(message_store=True)` 或 `WeiLink(message_store="/path/to/messages.db")` 手动启用。
+- **未启用**（SDK 默认）：单客户端模式，运行时无 SQLite 依赖。
+
+### 多客户端协调总结
+
+WeiLink 通过四种机制支持多个进程共享同一数据目录：
+
+1. **轮询锁**（`.poll.lock`）：确保同一时间只有一个进程轮询 iLink，防止 cursor 分叉。
+2. **数据锁**（`.data.lock`）：序列化对 `token.json` 和 `contexts.json` 的读写。
+3. **Route C 降级读取**：当轮询锁不可用且 SQLite 持久化已启用时，次级进程从数据库读取最近的消息。
+4. **原子写入**：所有文件写入使用临时文件 + 重命名模式，防止崩溃时文件损坏。
 
 ## 二维码登录流程
 
