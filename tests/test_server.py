@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import json
 from unittest.mock import MagicMock, patch
 
@@ -388,6 +389,10 @@ class TestSetDefault:
 # ------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    not importlib.util.find_spec("toolregistry"),
+    reason="toolregistry not installed",
+)
 class TestRegistry:
     def test_builds_with_all_tools(self):
         registry = app.build_registry()
