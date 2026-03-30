@@ -10,6 +10,7 @@ import urllib.request
 import pytest
 
 from weilink import WeiLink
+from weilink.models import Message, MessageType
 
 
 def _kill_proc(proc: subprocess.Popen) -> None:
@@ -284,3 +285,137 @@ class TestAdminAPI:
             self._get("/api/nonexistent")
         except urllib.error.HTTPError as e:
             assert e.code == 404
+
+
+class TestAdminMessages:
+    """Tests for GET /api/messages endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _start_server(self, tmp_path):
+        self.wl = WeiLink(base_path=tmp_path, message_store=True)
+        self.info = self.wl.start_admin(port=0)
+        self.base = self.info.url
+        yield
+        self.wl.stop_admin()
+        self.wl.close()
+
+    def _get(self, path):
+        req = urllib.request.Request(self.base + path)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+
+    def _get_error(self, path):
+        try:
+            self._get(path)
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+        return None, None
+
+    def _seed_messages(self, count=5, user_id="u1@im.wechat", bot_id="b1@im.bot"):
+        """Insert test messages into the store."""
+        store = self.wl._message_store
+        now_ms = int(time.time() * 1000)
+        msgs = []
+        for i in range(count):
+            msgs.append(
+                Message(
+                    from_user=user_id,
+                    msg_type=MessageType.TEXT,
+                    text=f"message {i}",
+                    timestamp=now_ms - (count - i) * 60000,
+                    message_id=1000 + i,
+                    bot_id=bot_id,
+                )
+            )
+        store.store(msgs, direction=1)
+        return msgs
+
+    def test_messages_returns_results(self):
+        self._seed_messages(3)
+        data = self._get("/api/messages?user_id=u1@im.wechat")
+        assert data["total"] == 3
+        assert len(data["messages"]) == 3
+
+    def test_messages_pagination(self):
+        self._seed_messages(10)
+        data = self._get("/api/messages?user_id=u1@im.wechat&limit=3&offset=0")
+        assert data["total"] == 10
+        assert len(data["messages"]) == 3
+
+        data2 = self._get("/api/messages?user_id=u1@im.wechat&limit=3&offset=3")
+        assert len(data2["messages"]) == 3
+        # Should be different messages
+        ids1 = {m["message_id"] for m in data["messages"]}
+        ids2 = {m["message_id"] for m in data2["messages"]}
+        assert ids1.isdisjoint(ids2)
+
+    def test_messages_filter_by_type(self):
+        store = self.wl._message_store
+        now_ms = int(time.time() * 1000)
+        store.store(
+            [
+                Message(
+                    from_user="u1@im.wechat",
+                    msg_type=MessageType.TEXT,
+                    text="hello",
+                    timestamp=now_ms,
+                    message_id=2001,
+                    bot_id="b1@im.bot",
+                ),
+                Message(
+                    from_user="u1@im.wechat",
+                    msg_type=MessageType.IMAGE,
+                    timestamp=now_ms + 1000,
+                    message_id=2002,
+                    bot_id="b1@im.bot",
+                ),
+            ],
+            direction=1,
+        )
+        data = self._get("/api/messages?user_id=u1@im.wechat&msg_type=1")
+        assert data["total"] == 1
+        assert data["messages"][0]["msg_type"] == "TEXT"
+
+    def test_messages_filter_by_text(self):
+        self._seed_messages(5)
+        data = self._get("/api/messages?user_id=u1@im.wechat&text_contains=message%202")
+        assert data["total"] == 1
+        assert "message 2" in data["messages"][0]["text"]
+
+    def test_messages_direction_field(self):
+        self._seed_messages(1)
+        data = self._get("/api/messages?user_id=u1@im.wechat")
+        assert data["messages"][0]["direction"] == "received"
+
+    def test_messages_empty_result(self):
+        data = self._get("/api/messages?user_id=nobody@im.wechat")
+        assert data["total"] == 0
+        assert data["messages"] == []
+
+    def test_messages_limit_capped_at_200(self):
+        self._seed_messages(5)
+        data = self._get("/api/messages?user_id=u1@im.wechat&limit=999")
+        # Should not error; limit is capped at 200 internally
+        assert len(data["messages"]) == 5
+
+
+class TestAdminMessagesDisabled:
+    """Tests for /api/messages when message_store is disabled."""
+
+    @pytest.fixture(autouse=True)
+    def _start_server(self, tmp_path):
+        self.wl = WeiLink(base_path=tmp_path)  # no message_store
+        self.info = self.wl.start_admin(port=0)
+        self.base = self.info.url
+        yield
+        self.wl.stop_admin()
+
+    def test_messages_returns_400_when_disabled(self):
+        try:
+            req = urllib.request.Request(self.base + "/api/messages")
+            urllib.request.urlopen(req, timeout=5)
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "not enabled" in body["error"]

@@ -148,6 +148,11 @@ body {
   border: 1px solid var(--border);
 }
 .btn-secondary:hover { background: var(--bg-hover); }
+.btn.disabled, .btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
 
 /* Main */
 .main {
@@ -405,6 +410,195 @@ tr:hover td { background: var(--bg-hover); }
   .header { padding: 12px 16px; }
   .status-cards { grid-template-columns: repeat(2, 1fr); }
   td, th { padding: 8px 12px; }
+  .drawer { width: 100vw !important; }
+}
+
+/* Message drawer */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  backdrop-filter: blur(2px);
+  z-index: 200;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+}
+.drawer-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(480px, 85vw);
+  height: 100vh;
+  background: var(--bg-secondary);
+  box-shadow: -4px 0 16px rgba(0,0,0,0.12);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+}
+.drawer-overlay.active .drawer {
+  transform: translateX(0);
+}
+.drawer-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.drawer-header-title {
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawer-filters {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.drawer-filters .form-input {
+  width: auto;
+  flex: 1;
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+}
+.drawer-footer {
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Chat bubbles */
+#msgBubbles {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bubble-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.bubble-wrap {
+  display: flex;
+  flex-direction: column;
+  max-width: 78%;
+}
+.bubble-wrap.received { align-self: flex-start; }
+.bubble-wrap.sent { align-self: flex-end; }
+.bubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+  position: relative;
+}
+.bubble-wrap.received .bubble {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-top-left-radius: 0;
+  margin-left: 8px;
+}
+.bubble-wrap.received .bubble::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  width: 8px;
+  height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='14' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M8 0v14C8 7 0 0 0 0z' fill='%23F5F5F5'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+}
+.bubble-wrap.sent .bubble {
+  background: var(--accent);
+  color: #fff;
+  border-top-right-radius: 0;
+  margin-right: 8px;
+}
+.bubble-wrap.sent .bubble::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -8px;
+  width: 8px;
+  height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg width='8' height='14' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0v14C0 7 8 0 8 0z' fill='%2307C160'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+}
+.bubble-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  padding: 0 4px;
+}
+.bubble-wrap.received .bubble-meta { text-align: left; }
+.bubble-wrap.sent .bubble-meta { text-align: right; }
+.bubble-sender {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+  padding: 0 4px;
+}
+.bubble-wrap.sent .bubble-sender { text-align: right; }
+.bubble-media {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.bubble-ref {
+  border-left: 3px solid var(--border);
+  padding: 2px 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bubble-wrap.sent .bubble-ref {
+  border-left-color: rgba(255,255,255,0.4);
+  color: rgba(255,255,255,0.7);
+}
+.bubble-time-sep {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 12px 0 8px;
+}
+.bubble-load-more {
+  text-align: center;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+.bubble-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 16px;
+  font-size: 14px;
 }
 </style>
 </head>
@@ -512,6 +706,37 @@ tr:hover td { background: var(--bg-hover); }
 </div>
 
 <div class="toast-container" id="toastContainer"></div>
+
+<!-- Message Drawer -->
+<div class="drawer-overlay" id="msgDrawer" onclick="closeMessageDrawer()">
+  <div class="drawer" onclick="event.stopPropagation()">
+    <div class="drawer-header">
+      <span class="drawer-header-title" id="msgDrawerTitle"></span>
+      <button class="btn-icon" onclick="closeMessageDrawer()">&times;</button>
+    </div>
+    <div class="drawer-filters">
+      <select class="form-input" id="msgTypeFilter" onchange="reloadMessages()" style="flex:0 0 auto;width:auto">
+        <option value="" data-i18n="messages.all_types">All Types</option>
+        <option value="1" data-i18n="messages.text">Text</option>
+        <option value="2" data-i18n="messages.image">Image</option>
+        <option value="3" data-i18n="messages.voice">Voice</option>
+        <option value="4" data-i18n="messages.file">File</option>
+        <option value="5" data-i18n="messages.video">Video</option>
+      </select>
+      <input type="text" class="form-input" id="msgSearchInput"
+             data-i18n-placeholder="messages.search"
+             placeholder="Search messages..." oninput="debouncedReload()">
+    </div>
+    <div class="drawer-body" id="msgDrawerBody">
+      <div class="bubble-load-more" id="msgLoadMore" style="display:none">
+        <button class="btn btn-secondary" onclick="loadOlderMessages()" data-i18n="messages.load_older">Load older messages</button>
+      </div>
+      <div id="msgBubbles"></div>
+      <div class="bubble-empty" id="msgEmpty" style="display:none" data-i18n="messages.no_messages">No messages found</div>
+    </div>
+    <div class="drawer-footer" id="msgDrawerFooter"></div>
+  </div>
+</div>
 
 <script>
 // ============================================================
@@ -643,6 +868,14 @@ class WeiLinkAPI {
       body: JSON.stringify({ new_name: newName }),
     });
   }
+
+  async getMessages(params) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null && v !== '') qs.set(k, v);
+    }
+    return this.request(`/api/messages?${qs}`);
+  }
 }
 
 const api = new WeiLinkAPI();
@@ -728,8 +961,8 @@ function renderSessions(data) {
 
     html += `<tr id="session-row-${s.name}">
       <td><strong>${escapeHtml(s.name)}</strong>${defaultBadge}</td>
-      <td style="font-family:monospace;font-size:12px">${s.bot_id || '—'}</td>
-      <td style="font-family:monospace;font-size:12px">${s.user_id ? `<span class="user-link" onclick="toggleUsers('${s.name}')">${escapeHtml(s.user_id)}</span>${freshBadge}` : '—'}</td>
+      <td style="font-family:monospace;font-size:12px">${s.bot_id || '\u2014'}</td>
+      <td style="font-family:monospace;font-size:12px">${s.user_id ? `<span class="user-link" onclick="toggleUsers('${s.name}')">${escapeHtml(s.user_id)}</span>${freshBadge}` : '\u2014'}</td>
       <td>${statusBadge}</td>
       <td>${actionsHtml}</td>
     </tr>`;
@@ -737,16 +970,30 @@ function renderSessions(data) {
     // User detail rows (hidden by default)
     if (s.users.length > 0) {
       s.users.forEach(u => {
+        const hasStore = true; // MCP always enables message_store
+        const viewBtn = s.bot_id
+          ? `<button class="btn btn-secondary${hasStore ? '' : ' disabled'}" ${hasStore ? `onclick="event.stopPropagation();openMessageDrawer('${escapeAttr(u.user_id)}','${escapeAttr(s.bot_id)}','${escapeAttr(s.name)}')"` : 'disabled'} data-i18n="messages.view_messages">${i18n.t('messages.view_messages')}</button>`
+          : `<button class="btn btn-secondary disabled" disabled data-i18n="messages.view_messages">${i18n.t('messages.view_messages')}</button>`;
         html += `<tr class="user-row user-rows-${s.name}" style="display:none">
           <td colspan="5">
-            <div style="padding:4px 0 4px 16px;font-size:13px;color:var(--text-secondary);display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+            <div style="padding:4px 0 4px 16px;font-size:13px;color:var(--text-secondary);display:grid;grid-template-columns:repeat(3,1fr) auto;gap:8px;align-items:center">
               <div><strong>${i18n.t('users.first_seen')}:</strong> ${formatTime(u.first_seen)}</div>
               <div><strong>${i18n.t('users.last_received')}:</strong> ${formatTime(u.last_interaction)}</div>
               <div><strong>${i18n.t('users.last_sent')}:</strong> ${formatTime(u.last_sent)}</div>
+              <div>${viewBtn}</div>
             </div>
           </td>
         </tr>`;
       });
+    } else if (s.connected) {
+      // Connected but no users yet — show placeholder row
+      html += `<tr class="user-row user-rows-${s.name}" style="display:none">
+        <td colspan="5">
+          <div style="padding:8px 16px;font-size:13px;color:var(--text-muted);text-align:center">
+            ${i18n.t('users.no_users')}
+          </div>
+        </td>
+      </tr>`;
     }
   });
   tbody.innerHTML = html;
@@ -762,6 +1009,10 @@ function escapeHtml(s) {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+function escapeAttr(s) {
+  return s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
 }
 
 // ============================================================
@@ -952,6 +1203,223 @@ function showToast(message, isError = false) {
 }
 
 // ============================================================
+// Message Drawer
+// ============================================================
+const _msgState = { userId: null, botId: null, offset: 0, total: 0, loading: false };
+let _msgSearchTimer = null;
+
+const MSG_TYPE_ICONS = { IMAGE: '\ud83d\uddbc\ufe0f', VOICE: '\ud83c\udfa4', FILE: '\ud83d\udcce', VIDEO: '\ud83c\udfac' };
+const PAGE_SIZE = 30;
+
+function openMessageDrawer(userId, botId, sessionName) {
+  _msgState.userId = userId;
+  _msgState.botId = botId;
+  _msgState.offset = 0;
+  _msgState.total = 0;
+
+  document.getElementById('msgDrawerTitle').textContent = i18n.t('messages.title', { user: userId });
+  document.getElementById('msgTypeFilter').value = '';
+  document.getElementById('msgSearchInput').value = '';
+  document.getElementById('msgBubbles').innerHTML = '';
+  document.getElementById('msgEmpty').style.display = 'none';
+  document.getElementById('msgLoadMore').style.display = 'none';
+  document.getElementById('msgDrawerFooter').textContent = '';
+
+  // Update filter option labels for current language
+  document.querySelectorAll('#msgTypeFilter option[data-i18n]').forEach(el => {
+    el.textContent = i18n.t(el.getAttribute('data-i18n'));
+  });
+
+  document.getElementById('msgDrawer').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  reloadMessages();
+}
+
+function closeMessageDrawer() {
+  document.getElementById('msgDrawer').classList.remove('active');
+  document.body.style.overflow = '';
+  _msgState.userId = null;
+  _msgState.botId = null;
+}
+
+async function reloadMessages() {
+  _msgState.offset = 0;
+  document.getElementById('msgBubbles').innerHTML = '';
+  document.getElementById('msgEmpty').style.display = 'none';
+  document.getElementById('msgLoadMore').style.display = 'none';
+  await fetchMessages(false);
+}
+
+async function loadOlderMessages() {
+  await fetchMessages(true);
+}
+
+async function fetchMessages(prepend) {
+  if (_msgState.loading) return;
+  _msgState.loading = true;
+
+  const params = {
+    user_id: _msgState.userId,
+    bot_id: _msgState.botId,
+    limit: PAGE_SIZE,
+    offset: _msgState.offset,
+  };
+
+  const typeVal = document.getElementById('msgTypeFilter').value;
+  if (typeVal) params.msg_type = typeVal;
+
+  const searchVal = document.getElementById('msgSearchInput').value.trim();
+  if (searchVal) params.text_contains = searchVal;
+
+  try {
+    const resp = await api.getMessages(params);
+    if (resp.error) {
+      if (resp.error.includes('not enabled')) {
+        document.getElementById('msgEmpty').textContent = i18n.t('messages.not_enabled');
+        document.getElementById('msgEmpty').style.display = '';
+      } else {
+        showToast(resp.error, true);
+      }
+      _msgState.loading = false;
+      return;
+    }
+
+    _msgState.total = resp.total;
+    const messages = resp.messages || [];
+
+    renderBubbles(messages, prepend);
+    _msgState.offset += messages.length;
+
+    // Footer
+    const loaded = document.querySelectorAll('#msgBubbles .bubble-wrap').length;
+    document.getElementById('msgDrawerFooter').textContent =
+      i18n.t('messages.showing', { n: loaded, total: _msgState.total });
+
+    // Show/hide load more
+    document.getElementById('msgLoadMore').style.display =
+      _msgState.offset < _msgState.total ? '' : 'none';
+
+    // Empty state
+    if (loaded === 0) {
+      document.getElementById('msgEmpty').textContent = i18n.t('messages.no_messages');
+      document.getElementById('msgEmpty').style.display = '';
+    } else {
+      document.getElementById('msgEmpty').style.display = 'none';
+    }
+  } catch (e) {
+    showToast(e.message, true);
+  }
+  _msgState.loading = false;
+}
+
+function renderBubbles(messages, prepend) {
+  const container = document.getElementById('msgBubbles');
+  // API returns newest-first; reverse for chronological order (oldest at top)
+  const ordered = [...messages].reverse();
+
+  let html = '';
+  let prevTs = 0;
+
+  // If prepending, we need to check the timestamp of the first existing bubble
+  if (prepend && container.children.length > 0) {
+    // Get the timestamp of the first existing bubble for time-sep logic
+    const firstExisting = container.querySelector('.bubble-wrap');
+    if (firstExisting) {
+      prevTs = 0; // Will insert time sep between old and new if gap > 5min
+    }
+  }
+
+  ordered.forEach(msg => {
+    const ts = msg.timestamp || 0;
+
+    // Time separator if gap > 5 minutes
+    if (prevTs > 0 && ts - prevTs > 300000) {
+      html += `<div class="bubble-time-sep">${formatMessageTime(ts)}</div>`;
+    } else if (prevTs === 0) {
+      html += `<div class="bubble-time-sep">${formatMessageTime(ts)}</div>`;
+    }
+    prevTs = ts;
+
+    const dir = msg.direction === 'sent' ? 'sent' : 'received';
+    let content = '';
+
+    // Quoted message
+    if (msg.ref_msg) {
+      const refText = msg.ref_msg.text || i18n.t('messages.' + (msg.ref_msg.msg_type || 'text').toLowerCase());
+      content += `<div class="bubble-ref">${escapeHtml(refText)}</div>`;
+    }
+
+    // Message content
+    const msgType = (msg.msg_type || 'TEXT').toUpperCase();
+    if (msgType === 'TEXT') {
+      content += escapeHtml(msg.text || '');
+    } else if (msgType === 'IMAGE') {
+      const icon = MSG_TYPE_ICONS.IMAGE;
+      const dim = msg.image ? ` ${msg.image.thumb_width}\u00d7${msg.image.thumb_height}` : '';
+      content += `<span class="bubble-media">${icon} ${i18n.t('messages.image')}${dim}</span>`;
+    } else if (msgType === 'VOICE') {
+      const icon = MSG_TYPE_ICONS.VOICE;
+      const dur = msg.voice ? ` ${msg.voice.playtime}s` : '';
+      const voiceText = msg.voice && msg.voice.text ? `<br>${escapeHtml(msg.voice.text)}` : '';
+      content += `<span class="bubble-media">${icon} ${i18n.t('messages.voice')}${dur}</span>${voiceText}`;
+    } else if (msgType === 'FILE') {
+      const icon = MSG_TYPE_ICONS.FILE;
+      const name = msg.file ? ` ${escapeHtml(msg.file.file_name)}` : '';
+      content += `<span class="bubble-media">${icon}${name || ' ' + i18n.t('messages.file')}</span>`;
+    } else if (msgType === 'VIDEO') {
+      const icon = MSG_TYPE_ICONS.VIDEO;
+      const dur = msg.video ? ` ${msg.video.play_length}s` : '';
+      content += `<span class="bubble-media">${icon} ${i18n.t('messages.video')}${dur}</span>`;
+    } else {
+      content += escapeHtml(msg.text || `[${msgType}]`);
+    }
+
+    const timeStr = formatBubbleTime(ts);
+    const senderLabel = dir === 'received' ? i18n.t('messages.sender_human') : i18n.t('messages.sender_bot');
+    html += `<div class="bubble-wrap ${dir}">
+      <div class="bubble-sender">${senderLabel}</div>
+      <div class="bubble">${content}</div>
+      <div class="bubble-meta">${timeStr}</div>
+    </div>`;
+  });
+
+  if (prepend) {
+    container.insertAdjacentHTML('afterbegin', html);
+  } else {
+    container.innerHTML = html;
+    // Scroll to bottom for initial load
+    const body = document.getElementById('msgDrawerBody');
+    body.scrollTop = body.scrollHeight;
+  }
+}
+
+function formatMessageTime(tsMs) {
+  if (!tsMs) return '';
+  const d = new Date(tsMs);
+  const now = new Date();
+  const sameDay = d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  if (sameDay) return `${hh}:${mm}`;
+  const yyyy = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mo}-${dd} ${hh}:${mm}`;
+}
+
+function formatBubbleTime(tsMs) {
+  if (!tsMs) return '';
+  const d = new Date(tsMs);
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function debouncedReload() {
+  if (_msgSearchTimer) clearTimeout(_msgSearchTimer);
+  _msgSearchTimer = setTimeout(() => reloadMessages(), 300);
+}
+
+// ============================================================
 // Init
 // ============================================================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -961,9 +1429,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshTimer = setInterval(refreshAll, 30000);
 });
 
-// Close modal on Escape
+// Close modals/drawer on Escape
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeLoginModal();
+  if (e.key === 'Escape') {
+    if (document.getElementById('msgDrawer').classList.contains('active')) {
+      closeMessageDrawer();
+    } else {
+      closeLoginModal();
+    }
+  }
 });
 </script>
 </body>

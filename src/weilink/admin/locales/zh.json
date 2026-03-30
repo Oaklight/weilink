@@ -66,5 +66,22 @@
     "hours_ago": "{{n}}\u5c0f\u65f6\u524d",
     "days_ago": "{{n}}\u5929\u524d",
     "never": "\u4ece\u672a"
+  },
+  "messages": {
+    "title": "\u4e0e {{user}} \u7684\u5bf9\u8bdd",
+    "all_types": "\u6240\u6709\u7c7b\u578b",
+    "text": "\u6587\u672c",
+    "image": "\u56fe\u7247",
+    "voice": "\u8bed\u97f3",
+    "file": "\u6587\u4ef6",
+    "video": "\u89c6\u9891",
+    "search": "\u641c\u7d22\u6d88\u606f...",
+    "load_older": "\u52a0\u8f7d\u66f4\u65e9\u6d88\u606f",
+    "showing": "\u663e\u793a {{n}} / {{total}} \u6761\u6d88\u606f",
+    "no_messages": "\u6682\u65e0\u6d88\u606f",
+    "not_enabled": "\u6d88\u606f\u6301\u4e45\u5316\u672a\u542f\u7528",
+    "view_messages": "\u67e5\u770b\u6d88\u606f",
+    "sender_human": "\u7528\u6237",
+    "sender_bot": "\u673a\u5668\u4eba"
   }
 }

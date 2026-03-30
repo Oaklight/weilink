@@ -76,6 +76,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self._handle_get_sessions()
         elif path == "/api/sessions/login/status":
             self._handle_poll_login(query)
+        elif path == "/api/messages":
+            self._handle_get_messages(query)
         elif path.startswith("/locales/") and path.endswith(".json"):
             lang = path[len("/locales/") : -len(".json")]
             self._handle_locale(lang)
@@ -349,6 +351,32 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             )
         except ValueError as e:
             self._send_error(404, str(e))
+
+    def _handle_get_messages(self, query: dict[str, list[str]]) -> None:
+        """Return paginated message history as JSON."""
+        store = self.weilink._message_store
+        if store is None:
+            self._send_error(400, "Message persistence is not enabled")
+            return
+
+        kwargs: dict[str, Any] = {}
+        if "user_id" in query:
+            kwargs["user_id"] = query["user_id"][0]
+        if "bot_id" in query:
+            kwargs["bot_id"] = query["bot_id"][0]
+        if "msg_type" in query:
+            kwargs["msg_type"] = int(query["msg_type"][0])
+        if "direction" in query:
+            kwargs["direction"] = int(query["direction"][0])
+        if "text_contains" in query:
+            kwargs["text_contains"] = query["text_contains"][0]
+
+        limit = min(int(query.get("limit", ["30"])[0]), 200)
+        offset = int(query.get("offset", ["0"])[0])
+
+        total = store.count(**kwargs)
+        messages = store.query(**kwargs, limit=limit, offset=offset)
+        self._send_json({"messages": messages, "total": total})
 
     def _handle_locale(self, lang: str) -> None:
         """Serve a locale JSON file."""

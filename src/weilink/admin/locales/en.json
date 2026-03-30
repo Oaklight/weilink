@@ -66,5 +66,22 @@
     "hours_ago": "{{n}}h ago",
     "days_ago": "{{n}}d ago",
     "never": "Never"
+  },
+  "messages": {
+    "title": "Chat with {{user}}",
+    "all_types": "All Types",
+    "text": "Text",
+    "image": "Image",
+    "voice": "Voice",
+    "file": "File",
+    "video": "Video",
+    "search": "Search messages...",
+    "load_older": "Load older messages",
+    "showing": "Showing {{n}} of {{total}} messages",
+    "no_messages": "No messages found",
+    "not_enabled": "Message persistence is not enabled",
+    "view_messages": "View Messages",
+    "sender_human": "Human",
+    "sender_bot": "Bot"
   }
 }
