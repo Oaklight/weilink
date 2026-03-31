@@ -260,10 +260,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 if name in wl._sessions:
                     session = wl._sessions[name]
                 else:
-                    if name == "default":
-                        token_path = wl._default_session.token_path
-                    else:
-                        token_path = wl._base_path / name / "token.json"
+                    token_path = wl._base_path / name / "token.json"
                     session = wl._create_session(name, token_path)
 
                 session.bot_info = BotInfo(

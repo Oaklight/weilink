@@ -219,8 +219,14 @@ class WeiLink:
         else:
             self._base_path = _DEFAULT_BASE_PATH
 
+        # Auto-migrate legacy flat default layout into default/ subdir.
+        if token_path is None:
+            self._migrate_flat_default()
+
         default_token = (
-            Path(token_path) if token_path else self._base_path / "token.json"
+            Path(token_path)
+            if token_path
+            else self._base_path / _DEFAULT_SESSION / "token.json"
         )
 
         self._sessions: dict[str, _Session] = {}
@@ -245,34 +251,77 @@ class WeiLink:
                 db_path = Path(str(message_store))
             self._message_store = MessageStore(db_path)
 
-        # Auto-discover named sessions from disk first
-        named: list[_Session] = []
+        # Auto-discover sessions from subdirectories (including "default")
+        discovered: list[_Session] = []
         if self._base_path.is_dir():
             for child in sorted(self._base_path.iterdir()):
                 if child.is_dir() and (child / "token.json").exists():
                     name = child.name
                     if name not in self._sessions:
-                        named.append(self._create_session(name, child / "token.json"))
+                        discovered.append(
+                            self._create_session(name, child / "token.json")
+                        )
 
-        if default_token.exists() or not named:
-            # Default token exists, or no named sessions: create default
+        # Determine which session is the default.
+        if _DEFAULT_SESSION in self._sessions:
+            # "default" was discovered on disk.
+            self._default_session = self._sessions[_DEFAULT_SESSION]
+        elif default_token.exists():
+            # Explicit token_path outside base_path scan — create it.
+            self._default_session = self._create_session(
+                _DEFAULT_SESSION, default_token
+            )
+        elif not discovered:
+            # First use — create a placeholder (no file on disk yet).
             self._default_session = self._create_session(
                 _DEFAULT_SESSION, default_token
             )
         else:
-            # No default token but named sessions exist: skip phantom default.
-            # Check for persisted default choice first.
+            # Named sessions exist but no "default" — pick one.
             saved_default = self._load_default_session_name()
             if saved_default and saved_default in self._sessions:
                 self._default_session = self._sessions[saved_default]
             else:
-                # Pick the earliest-created connected session as default.
-                connected = [s for s in named if s.bot_info]
+                connected = [s for s in discovered if s.bot_info]
                 if connected:
                     connected.sort(key=lambda s: s.created_at or float("inf"))
                     self._default_session = connected[0]
                 else:
-                    self._default_session = named[0]
+                    self._default_session = discovered[0]
+
+    # ------------------------------------------------------------------
+    # Legacy layout migration
+    # ------------------------------------------------------------------
+
+    def _migrate_flat_default(self) -> None:
+        """Move legacy flat ``token.json``/``contexts.json`` into ``default/``.
+
+        Early single-session versions stored credentials directly under
+        ``base_path/``.  This migrates them into ``base_path/default/`` so
+        that every session uses the same subdirectory layout.
+        """
+        flat_token = self._base_path / "token.json"
+        dest_dir = self._base_path / _DEFAULT_SESSION
+        dest_token = dest_dir / "token.json"
+
+        if not flat_token.exists() or dest_token.exists():
+            return
+
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            flat_token.rename(dest_token)
+        except FileNotFoundError:
+            # Another process migrated first — harmless.
+            return
+
+        flat_ctx = self._base_path / "contexts.json"
+        if flat_ctx.exists():
+            try:
+                flat_ctx.rename(dest_dir / "contexts.json")
+            except FileNotFoundError:
+                pass
+
+        logger.info("Migrated legacy flat default session into %s/", _DEFAULT_SESSION)
 
     # ------------------------------------------------------------------
     # Default session persistence
@@ -743,11 +792,6 @@ class WeiLink:
         """
         if name is None:
             session = self._default_session
-        elif name == _DEFAULT_SESSION:
-            raise ValueError(
-                f"{_DEFAULT_SESSION!r} is reserved. "
-                "Use login() without a name for the default session."
-            )
         elif name in self._sessions:
             session = self._sessions[name]
         else:

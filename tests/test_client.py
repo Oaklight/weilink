@@ -689,14 +689,17 @@ class TestMultiSession:
 
             wl.close()
 
-            assert (Path(tmpdir) / "token.json").exists()
+            assert (Path(tmpdir) / "default" / "token.json").exists()
             assert (Path(tmpdir) / "s2" / "token.json").exists()
 
     def test_base_path_constructor(self):
         """base_path kwarg sets the base directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             wl = WeiLink(base_path=tmpdir)
-            assert wl._default_session.token_path == Path(tmpdir) / "token.json"
+            assert (
+                wl._default_session.token_path
+                == Path(tmpdir) / "default" / "token.json"
+            )
 
     def test_send_auto_routes_to_correct_session(self):
         """send() should pick the session that has a context_token for the user."""
@@ -756,7 +759,7 @@ class TestMultiSession:
             assert (Path(tmpdir) / "pipi" / "token.json").exists()
             assert (Path(tmpdir) / "pipi" / "contexts.json").exists()
             # Old files cleaned up
-            assert not (Path(tmpdir) / "token.json").exists()
+            assert not (Path(tmpdir) / "default").exists()
 
     def test_rename_session_errors(self):
         """rename_session() raises on invalid names."""
@@ -998,14 +1001,18 @@ class TestSetDefault:
 class TestNameProtection:
     """Tests for 'default' name protection."""
 
-    def test_login_name_default_rejected(self):
+    def test_login_name_default_accepted(self):
+        """login(name='default') is allowed and uses the default session."""
         with tempfile.TemporaryDirectory() as tmpdir:
             wl = WeiLink(base_path=tmpdir)
-            try:
-                wl.login(name="default")
-                assert False, "Should raise ValueError"
-            except ValueError as e:
-                assert "reserved" in str(e)
+            wl._default_session.bot_info = BotInfo(
+                bot_id="bot1@im.bot",
+                base_url="https://example.com",
+                token="tok1",
+            )
+            # Already logged in — returns existing bot_info without raising.
+            info = wl.login(name="default")
+            assert info.bot_id == "bot1@im.bot"
 
     def test_rename_to_default_rejected(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1088,7 +1095,7 @@ class TestSkipPhantomDefault:
             assert not wl.is_connected
 
     def test_default_token_exists_creates_default(self):
-        """When default token.json exists, always creates default session."""
+        """Legacy flat token.json is auto-migrated and creates default session."""
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "token.json").write_text(
                 json.dumps(
@@ -1115,6 +1122,76 @@ class TestSkipPhantomDefault:
             wl = WeiLink(base_path=tmpdir)
             assert "default" in wl.sessions
             assert "zb" in wl.sessions
+
+
+class TestFlatLayoutMigration:
+    """Tests for auto-migration of legacy flat default layout."""
+
+    def test_flat_layout_auto_migrated(self):
+        """Flat token.json + contexts.json are moved into default/ subdir."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            token_data = {
+                "bot_id": "b@im.bot",
+                "base_url": "https://example.com",
+                "token": "tok",
+            }
+            (base / "token.json").write_text(json.dumps(token_data))
+            ctx_data = {"user@im.wechat": {"t": "ctx", "ts": time.time()}}
+            (base / "contexts.json").write_text(json.dumps(ctx_data))
+
+            wl = WeiLink(base_path=tmpdir)
+
+            # Files should have moved to default/
+            assert not (base / "token.json").exists()
+            assert not (base / "contexts.json").exists()
+            assert (base / "default" / "token.json").exists()
+            assert (base / "default" / "contexts.json").exists()
+
+            # Session loaded correctly
+            assert "default" in wl.sessions
+            assert wl.bot_id == "b@im.bot"
+            assert wl._default_session.context_tokens.get("user@im.wechat") == "ctx"
+
+    def test_no_migration_when_already_migrated(self):
+        """If default/ subdir already exists, no migration happens."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            default_dir = base / "default"
+            default_dir.mkdir()
+            token_data = {
+                "bot_id": "b@im.bot",
+                "base_url": "https://example.com",
+                "token": "tok",
+            }
+            (default_dir / "token.json").write_text(json.dumps(token_data))
+
+            wl = WeiLink(base_path=tmpdir)
+            assert "default" in wl.sessions
+            assert wl.bot_id == "b@im.bot"
+            # No flat files should exist
+            assert not (base / "token.json").exists()
+
+    def test_no_migration_with_explicit_token_path(self):
+        """When token_path is explicit, no migration runs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            token_path = base / "token.json"
+            token_path.write_text(
+                json.dumps(
+                    {
+                        "bot_id": "b@im.bot",
+                        "base_url": "https://example.com",
+                        "token": "tok",
+                    }
+                )
+            )
+
+            wl = WeiLink(token_path=token_path)
+            # File stays at flat location — no migration
+            assert token_path.exists()
+            assert not (base / "default" / "token.json").exists()
+            assert wl.bot_id == "b@im.bot"
 
 
 class TestCreatedAt:
@@ -1330,6 +1407,8 @@ class TestCrossProcessLocking:
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
             # Create valid credentials so recv doesn't raise RuntimeError
+            default_dir = base / "default"
+            default_dir.mkdir()
             token_data = {
                 "bot_id": "b@im.bot",
                 "base_url": "https://example.com",
@@ -1337,7 +1416,7 @@ class TestCrossProcessLocking:
                 "user_id": "u@im.wechat",
                 "cursor": "",
             }
-            (base / "token.json").write_text(json.dumps(token_data))
+            (default_dir / "token.json").write_text(json.dumps(token_data))
 
             wl_a = WeiLink(base_path=base)
             wl_b = WeiLink(base_path=base)
@@ -1359,7 +1438,9 @@ class TestCrossProcessLocking:
         """data_lock serializes access to contexts.json."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
-            (base / "token.json").write_text(
+            default_dir = base / "default"
+            default_dir.mkdir()
+            (default_dir / "token.json").write_text(
                 json.dumps(
                     {
                         "bot_id": "b@im.bot",
@@ -1391,6 +1472,8 @@ class TestCrossProcessLocking:
         """send() re-reads contexts from disk under data_lock."""
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
+            default_dir = base / "default"
+            default_dir.mkdir()
             token_data = {
                 "bot_id": "b@im.bot",
                 "base_url": "https://example.com",
@@ -1398,7 +1481,7 @@ class TestCrossProcessLocking:
                 "user_id": "u@im.wechat",
                 "cursor": "",
             }
-            (base / "token.json").write_text(json.dumps(token_data))
+            (default_dir / "token.json").write_text(json.dumps(token_data))
 
             # Write contexts as if another process updated them
             ctx_data = {
@@ -1409,7 +1492,7 @@ class TestCrossProcessLocking:
                     "first_seen": time.time() - 100,
                 }
             }
-            (base / "contexts.json").write_text(json.dumps(ctx_data))
+            (default_dir / "contexts.json").write_text(json.dumps(ctx_data))
 
             wl = WeiLink(base_path=base)
             session = wl._default_session
@@ -1420,7 +1503,7 @@ class TestCrossProcessLocking:
 
             # Simulate another process updating send_count on disk
             ctx_data["user@im.wechat"]["sc"] = 8
-            (base / "contexts.json").write_text(json.dumps(ctx_data))
+            (default_dir / "contexts.json").write_text(json.dumps(ctx_data))
 
             # Re-load should pick up the new count
             wl._load_session_contexts(session)
@@ -1491,8 +1574,9 @@ class TestRouteC:
 
     def _setup_session(self, base_path: Path) -> tuple:
         """Create a WeiLink instance with a logged-in session and message store."""
-        token_path = base_path / "token.json"
-        token_path.write_text(
+        default_dir = base_path / "default"
+        default_dir.mkdir(parents=True, exist_ok=True)
+        (default_dir / "token.json").write_text(
             json.dumps(
                 {
                     "bot_id": "bot1@im.bot",
