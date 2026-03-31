@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 (2026-03-31)
 
 ### Breaking Changes
 
 - **Rename server tools to match SDK** ([#6](https://github.com/Oaklight/weilink/issues/6)) — `recv_messages` → `recv`, `send_message` → `send`, `download_media` → `download`, `get_message_history` → `history`, `list_sessions` → `sessions`; tool names now mirror the SDK method names for consistency across all three API layers
 - **Merge `login` + `check_login` into single `login` tool** — the `login` tool is now stateful: first call starts a QR flow, subsequent calls poll with a configurable timeout (default 30s) until status changes; `check_login` has been removed
+- **Default session subdirectory layout** — the default session now stores files in `base_path/default/` instead of flat in `base_path/`; existing flat layouts are auto-migrated on first load; this unifies the directory structure for all sessions
 
 ### New Features
 
@@ -19,6 +20,7 @@
 - **Atomic file writes** — `token.json`, `contexts.json`, and `.default_session` are now written via temp-file + `os.replace()` to prevent corruption on crash
 - **Admin panel message history** — slide-out chat drawer showing per-user conversation with WeChat-style bubbles; supports all message types, pagination, type filtering, and text search
 - **Lazy media download in admin panel** — download button on media messages fetches from CDN on demand via `GET /api/messages/<id>/download`
+- **Background auto-polling** — admin panel and MCP/OpenAPI server now call `run_background()` on startup, so users and messages appear automatically without waiting for an explicit `recv` call
 
 ### Improvements
 

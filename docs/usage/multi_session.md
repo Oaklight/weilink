@@ -80,8 +80,9 @@ Sessions are stored under the base path (`~/.weilink/` by default):
 
 ```
 ~/.weilink/
-├── token.json          # default session
-├── contexts.json
+├── default/
+│   ├── token.json      # default session
+│   └── contexts.json
 ├── account_a/
 │   ├── token.json
 │   └── contexts.json
@@ -110,3 +111,6 @@ wl.login()          # same as before — uses default session
 wl.recv()           # polls the default session
 wl.send(to, text)   # sends via default session
 ```
+
+!!! note "Auto-Migration from Flat Layout"
+    Prior to v0.5.0, the default session stored files flat in `base_path/` (e.g., `~/.weilink/token.json`). Starting from v0.5.0, all sessions including the default use subdirectories (`~/.weilink/default/`). On first load, WeiLink automatically migrates existing flat layouts to the new structure. No manual action is required.
