@@ -436,6 +436,7 @@ def _run_admin(args: argparse.Namespace) -> None:
         kwargs["base_path"] = Path(args.base_path)
 
     wl = WeiLink(**kwargs)
+    wl.run_background()
 
     # Session summary
     connected = [n for n, s in wl._sessions.items() if s.bot_info]

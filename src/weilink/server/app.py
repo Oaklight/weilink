@@ -29,20 +29,27 @@ _pending_login: dict[str, Any] | None = None
 
 
 def _init_client(base_path: Path | None = None) -> None:
-    """Pre-initialize the global WeiLink client with optional *base_path*."""
+    """Pre-initialize the global WeiLink client with optional *base_path*.
+
+    Also starts background polling so that messages are received
+    automatically, the admin panel shows users, and the message store
+    is populated without waiting for an explicit ``recv`` call.
+    """
     global _wl
     if _wl is None:
         kwargs: dict[str, Any] = {"message_store": True}
         if base_path is not None:
             kwargs["base_path"] = base_path
         _wl = WeiLink(**kwargs)
+        _wl.run_background()
 
 
 def _get_client() -> WeiLink:
     """Return the global WeiLink client, creating it on first use."""
     global _wl
     if _wl is None:
-        _wl = WeiLink()
+        _wl = WeiLink(message_store=True)
+        _wl.run_background()
     return _wl
 
 
@@ -350,9 +357,7 @@ async def login(
             from weilink.models import BotInfo
 
             name = session_name_stored or "default"
-            if name == "default":
-                session = wl._default_session
-            elif name in wl._sessions:
+            if name in wl._sessions:
                 session = wl._sessions[name]
             else:
                 token_path = wl._base_path / name / "token.json"
