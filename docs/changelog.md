@@ -1,11 +1,12 @@
 # 更新日志
 
-## 未发布
+## v0.5.0 (2026-03-31)
 
 ### 破坏性变更
 
 - **重命名服务器工具以匹配 SDK** ([#6](https://github.com/Oaklight/weilink/issues/6)) — `recv_messages` → `recv`、`send_message` → `send`、`download_media` → `download`、`get_message_history` → `history`、`list_sessions` → `sessions`；工具名称现在与 SDK 方法名保持一致，三层 API 统一命名
 - **合并 `login` + `check_login` 为单个 `login` 工具** — `login` 工具现在是有状态的：首次调用发起二维码流程，后续调用以可配置超时（默认 30 秒）轮询直到状态变化；`check_login` 已移除
+- **默认会话子目录布局** — 默认会话文件现存储在 `base_path/default/` 而非直接平铺在 `base_path/` 下；已有的旧布局在首次加载时自动迁移；所有会话目录结构统一
 
 ### 新功能
 
@@ -19,6 +20,7 @@
 - **原子文件写入** — `token.json`、`contexts.json` 和 `.default_session` 现在通过临时文件 + `os.replace()` 写入，防止崩溃时文件损坏
 - **管理面板消息历史** — 滑出式消息抽屉，以微信风格气泡展示每个用户的对话记录；支持所有消息类型、分页、类型过滤和文本搜索
 - **管理面板懒加载下载** — 媒体消息上的下载按钮通过 `GET /api/messages/<id>/download` 按需从 CDN 拉取文件
+- **后台自动轮询** — 管理面板和 MCP/OpenAPI 服务器启动时自动调用 `run_background()`，用户和消息无需等待显式 `recv` 调用即可自动显示
 
 ### 改进
 

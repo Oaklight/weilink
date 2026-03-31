@@ -80,8 +80,9 @@ wl.logout("account_b")
 
 ```
 ~/.weilink/
-├── token.json          # 默认会话
-├── contexts.json
+├── default/
+│   ├── token.json      # 默认会话
+│   └── contexts.json
 ├── account_a/
 │   ├── token.json
 │   └── contexts.json
@@ -110,3 +111,6 @@ wl.login()          # 和以前一样 — 使用默认会话
 wl.recv()           # 轮询默认会话
 wl.send(to, text)   # 通过默认会话发送
 ```
+
+!!! note "从平铺布局自动迁移"
+    v0.5.0 之前，默认会话的文件直接存放在 `base_path/` 下（如 `~/.weilink/token.json`）。从 v0.5.0 起，所有会话（包括默认会话）均使用子目录（`~/.weilink/default/`）。首次加载时，WeiLink 会自动将已有的平铺布局迁移到新结构，无需手动操作。
