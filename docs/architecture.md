@@ -213,7 +213,7 @@ flowchart TD
 
 On Windows, file locking is skipped (no `fcntl`) and WeiLink operates as before.
 
-### Route C — Cooperative Polling Fallback
+### Cooperative Polling Fallback
 
 When `message_store` is enabled and the poll lock is held by another process, `recv()` reads recent messages (last 60 seconds) from the SQLite store instead of returning an empty list. This allows secondary processes to observe messages without conflicting with the primary poller's cursor.
 
@@ -242,7 +242,7 @@ WeiLink includes an optional SQLite-backed message store that records all receiv
 flowchart LR
     recv["recv()"] -->|"store()"| db["messages.db<br/>(SQLite WAL)"]
     send["send()"] -->|"store_sent()"| db
-    fallback["Route C<br/>fallback"] -->|"query_messages()"| db
+    fallback["SQLite<br/>fallback"] -->|"query_messages()"| db
     history["history"] -->|"query()"| db
     download["download"] -->|"get_by_id()"| db
 ```
@@ -267,7 +267,7 @@ WeiLink supports multiple processes sharing the same data directory through four
 
 1. **Poll lock** (`.poll.lock`): ensures only one process polls iLink at a time, preventing cursor divergence.
 2. **Data lock** (`.data.lock`): serializes reads and writes to `token.json` and `contexts.json`.
-3. **Route C fallback**: when the poll lock is unavailable and SQLite persistence is enabled, secondary processes read recent messages from the database.
+3. **SQLite fallback**: when the poll lock is unavailable and SQLite persistence is enabled, secondary processes read recent messages from the database.
 4. **Atomic writes**: all file writes use temp-file-then-rename to prevent corruption on crash.
 
 ## QR Code Login Flow
