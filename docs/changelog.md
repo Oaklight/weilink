@@ -15,7 +15,7 @@
 - **`logout` 服务器工具** — 登出会话并移除持久化凭据
 - **`rename_session` 服务器工具** — 重命名会话
 - **`set_default` 服务器工具** — 设置默认会话
-- **Route C 协作式轮询** — 当 `message_store` 已启用且轮询锁被其他进程持有时，`recv()` 从 SQLite 读取最近消息而非返回空列表；无需中心服务器即可实现多客户端访问
+- **协作式轮询降级** — 当 `message_store` 已启用且轮询锁被其他进程持有时，`recv()` 从 SQLite 读取最近消息而非返回空列表；无需中心服务器即可实现多客户端访问
 - **CLI Bot 命令** — 新增 `login`、`logout`、`status`、`recv`、`send`、`download`、`history` 和 `sessions`（含 `rename`/`default` 子命令）子命令；所有命令支持 `--json` 输出机器可读格式，以及 `-d, --base-path` 自定义数据目录
 - **原子文件写入** — `token.json`、`contexts.json` 和 `.default_session` 现在通过临时文件 + `os.replace()` 写入，防止崩溃时文件损坏
 - **管理面板消息历史** — 滑出式消息抽屉，以微信风格气泡展示每个用户的对话记录；支持所有消息类型、分页、类型过滤和文本搜索
