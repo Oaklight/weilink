@@ -1,5 +1,11 @@
 # 更新日志
 
+## v0.5.1 (2026-04-01)
+
+### 改进
+
+- **跨平台文件锁** ([#8](https://github.com/Oaklight/weilink/pull/8)) — 将内部 `_filelock.py`（Windows 上为空操作）替换为 [zerodep](https://github.com/Oaklight/zerodep) `filelock` 模块；Windows 现在使用 `msvcrt.locking` 实现真正的跨进程文件锁，不再静默跳过
+
 ## v0.5.0 (2026-03-31)
 
 ### 破坏性变更

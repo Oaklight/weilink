@@ -20,7 +20,7 @@ graph TB
         aes_py["_aes.py<br/><i>纯 Python AES 后备</i>"]
         qr["_qr.py<br/><i>二维码生成</i>"]
         store["_store.py<br/><i>SQLite 消息持久化</i>"]
-        filelock["_filelock.py<br/><i>跨进程文件锁</i>"]
+        filelock["filelock.py<br/><i>跨进程文件锁</i>"]
     end
 
     client --> protocol
@@ -171,7 +171,7 @@ flowchart TD
 
 ## 跨进程文件锁
 
-当多个进程共享同一数据目录时（例如 SDK 脚本和 stdio MCP 服务器同时使用 `~/.weilink/`），WeiLink 通过两把基于 `fcntl.flock()` 的文件锁协调访问：
+当多个进程共享同一数据目录时（例如 SDK 脚本和 stdio MCP 服务器同时使用 `~/.weilink/`），WeiLink 通过两把跨平台文件锁（Unix 使用 `fcntl.flock`，Windows 使用 `msvcrt.locking`）协调访问：
 
 ```mermaid
 flowchart TD
@@ -211,7 +211,7 @@ flowchart TD
 
 **原子文件写入：** 所有对 `token.json`、`contexts.json` 和 `.default_session` 的写入均使用"写临时文件 + `os.replace()`"模式，确保进程崩溃不会产生损坏的文件。
 
-在 Windows 上，文件锁被跳过（无 `fcntl`），WeiLink 的行为与之前一致。
+在 Windows 上使用 `msvcrt.locking` 配合指数退避轮询实现阻塞语义，文件锁在所有平台上均正常工作。
 
 ### 协作式轮询降级
 
