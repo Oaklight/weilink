@@ -282,7 +282,7 @@ class MessageStore:
         self._db_path = Path(db_path)
         self._max_age_days = max_age_days
         self._max_count = max_count
-        self._write_lock = threading.Lock()
+        self._lock = threading.Lock()
         self._insert_count = 0
         self._closed = False
 
@@ -341,7 +341,7 @@ class MessageStore:
                     now,
                 )
             )
-        with self._write_lock:
+        with self._lock:
             self._conn.executemany(
                 "INSERT OR IGNORE INTO messages "
                 "(message_id, user_id, bot_id, msg_type, direction, text, "
@@ -379,7 +379,7 @@ class MessageStore:
             timestamp=timestamp_ms,
             bot_id=bot_id,
         )
-        with self._write_lock:
+        with self._lock:
             self._conn.execute(
                 "INSERT INTO messages "
                 "(message_id, user_id, bot_id, msg_type, direction, text, "
@@ -410,10 +410,11 @@ class MessageStore:
         Returns:
             The reconstructed Message, or None if not found.
         """
-        row = self._conn.execute(
-            "SELECT data FROM messages WHERE message_id = ?",
-            (message_id,),
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT data FROM messages WHERE message_id = ?",
+                (message_id,),
+            ).fetchone()
         if row is None:
             return None
         return deserialize_message(row[0])
@@ -479,7 +480,8 @@ class MessageStore:
         sql = f"SELECT data, direction FROM messages{where} ORDER BY timestamp_ms DESC LIMIT ? OFFSET ?"
         params.extend([limit, offset])
 
-        rows = self._conn.execute(sql, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
         results = []
         for data_json, row_dir in rows:
             try:
@@ -534,7 +536,8 @@ class MessageStore:
         sql = f"SELECT data FROM messages{where} ORDER BY timestamp_ms DESC LIMIT ?"
         params.append(limit)
 
-        rows = self._conn.execute(sql, params).fetchall()
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
         results: list[Message] = []
         for (data_json,) in rows:
             try:
@@ -588,9 +591,10 @@ class MessageStore:
             params.append(f"%{text_contains}%")
 
         where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
-        row = self._conn.execute(
-            f"SELECT COUNT(*) FROM messages{where}", params
-        ).fetchone()
+        with self._lock:
+            row = self._conn.execute(
+                f"SELECT COUNT(*) FROM messages{where}", params
+            ).fetchone()
         return row[0] if row else 0
 
     # ------------------------------------------------------------------
@@ -603,7 +607,7 @@ class MessageStore:
         Returns:
             Number of rows deleted.
         """
-        with self._write_lock:
+        with self._lock:
             return self._prune_locked()
 
     def _prune_locked(self) -> int:
