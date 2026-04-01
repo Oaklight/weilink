@@ -110,6 +110,9 @@ Then add it to Claude Code settings (`~/.claude/settings.json`):
 !!! tip "Why HTTP?"
     HTTP transport lets the MCP server persist across Claude Code sessions. You start it once and all Claude Code sessions can connect to the same server instance — no need to restart the server when you start a new conversation.
 
+!!! tip "One-command setup"
+    For Claude Code and Codex, `weilink setup` automates the entire configuration including hooks for auto-polling new messages.  See [IDE Integration](setup.md).
+
 ### Cursor / VS Code
 
 Add to MCP settings:

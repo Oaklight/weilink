@@ -19,6 +19,11 @@ weilink admin --host 0.0.0.0 -p 8080
 weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080
 weilink openapi --host 0.0.0.0 -p 8000
 
+# Integration commands
+weilink setup claude-code                       # Install Claude Code plugin
+weilink setup codex                             # Install Codex integration
+weilink setup opencode                          # Install OpenCode integration
+
 # Other commands
 weilink migrate openclaw
 ```
@@ -240,6 +245,32 @@ Start the OpenAPI (REST) server. See [OpenAPI Server](openapi.md) for endpoint d
 | `--admin-port` | Also start admin panel on this port (same host) | *(disabled)* |
 | `--log-level` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 | `--no-banner` | Suppress the ASCII banner on startup | *(off)* |
+
+## Integration Commands
+
+### `weilink setup`
+
+Set up integration with AI coding assistants.  See [IDE Integration](setup.md) for full details.
+
+```bash
+weilink setup claude-code              # Install Claude Code plugin (symlink)
+weilink setup claude-code --copy       # Copy files instead (Windows)
+weilink setup claude-code --uninstall  # Remove the plugin
+weilink setup codex                    # Install Codex integration
+weilink setup codex --uninstall        # Remove the integration
+weilink setup opencode                 # Install OpenCode integration
+weilink setup opencode --uninstall     # Remove the integration
+```
+
+### `weilink hook-poll`
+
+Poll the message store for new messages.  Used internally by hook scripts.  See [IDE Integration](setup.md#weilink-hook-poll) for details.
+
+```bash
+weilink hook-poll                      # Poll for new messages
+weilink hook-poll --limit 50           # Return up to 50 messages
+weilink hook-poll --reset              # Clear poll state
+```
 
 ## Other Commands
 

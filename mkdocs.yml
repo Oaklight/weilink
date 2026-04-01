@@ -85,6 +85,7 @@ nav:
       - Core Concepts: usage/concepts.md
       - Multi-Session: usage/multi_session.md
       - MCP Server: usage/mcp.md
+      - IDE Integration: usage/setup.md
       - OpenAPI Server: usage/openapi.md
       - Admin Panel: usage/admin.md
       - CLI Reference: usage/cli.md
