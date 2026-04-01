@@ -2,13 +2,16 @@ services:
   weilink:
     image: oaklight/weilink
     ports:
-      - "45678:8000"  # MCP SSE
+      - "45678:8000"  # MCP server (streamable-http default, endpoint /mcp)
       - "49999:8080"  # Admin panel
     volumes:
       - weilink-data:/data/weilink
     environment:
       - PUID=1000  # Match your host user's UID
       - PGID=1000  # Match your host user's GID
+    # Default CMD uses streamable-http (-t http, endpoint /mcp).
+    # To switch to SSE transport, uncomment the line below:
+    # command: ["weilink", "mcp", "-t", "sse", "--host", "0.0.0.0", "-p", "8000", "--admin-port", "8080", "-d", "/data/weilink"]
     restart: unless-stopped
 
 volumes:

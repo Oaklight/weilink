@@ -235,6 +235,7 @@ class WeiLink:
         self._message_queue: queue.Queue[Message] = queue.Queue(maxsize=1000)
         self._dispatcher_thread: threading.Thread | None = None
         self._dispatcher_stop = threading.Event()
+        self._closed = False
 
         # Cross-process file locks
         self._poll_lock = FileLock(self._base_path / ".poll.lock")
@@ -1562,7 +1563,7 @@ class WeiLink:
         if self._dispatcher_thread is None:
             return
         self._dispatcher_stop.set()
-        self._dispatcher_thread.join(timeout=10.0)
+        self._dispatcher_thread.join(timeout=45.0)
         self._dispatcher_thread = None
         self._dispatcher_stop.clear()
 
@@ -1647,6 +1648,9 @@ class WeiLink:
 
     def close(self) -> None:
         """Save state for all sessions and clean up."""
+        if self._closed:
+            return
+        self._closed = True
         self.stop()
         self.stop_admin()
         if self._message_store is not None:

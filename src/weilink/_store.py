@@ -284,6 +284,7 @@ class MessageStore:
         self._max_count = max_count
         self._write_lock = threading.Lock()
         self._insert_count = 0
+        self._closed = False
 
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(
@@ -321,7 +322,7 @@ class MessageStore:
             messages: List of Message objects to store.
             direction: 1 = received (user→bot), 2 = sent (bot→user).
         """
-        if not messages:
+        if not messages or self._closed:
             return
         now = time.time()
         rows = []
@@ -446,6 +447,8 @@ class MessageStore:
         Returns:
             List of message dicts (to_dict format + direction field).
         """
+        if self._closed:
+            return []
         limit = min(limit, 200)
         clauses: list[str] = []
         params: list[Any] = []
@@ -511,6 +514,8 @@ class MessageStore:
         Returns:
             List of Message objects, newest first.
         """
+        if self._closed:
+            return []
         limit = min(limit, 200)
         clauses: list[str] = []
         params: list[Any] = []
@@ -632,6 +637,7 @@ class MessageStore:
 
     def close(self) -> None:
         """Close the database connection."""
+        self._closed = True
         try:
             self._conn.close()
         except Exception:

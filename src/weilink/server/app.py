@@ -35,6 +35,8 @@ def _init_client(base_path: Path | None = None) -> None:
     automatically, the admin panel shows users, and the message store
     is populated without waiting for an explicit ``recv`` call.
     """
+    import atexit
+
     global _wl
     if _wl is None:
         kwargs: dict[str, Any] = {"message_store": True}
@@ -42,6 +44,7 @@ def _init_client(base_path: Path | None = None) -> None:
             kwargs["base_path"] = base_path
         _wl = WeiLink(**kwargs)
         _wl.run_background()
+        atexit.register(_wl.close)
 
 
 def _get_client() -> WeiLink:

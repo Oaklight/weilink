@@ -67,4 +67,4 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 8000 8080
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["weilink", "mcp", "-t", "sse", "--host", "0.0.0.0", "-p", "8000", "--admin-port", "8080", "-d", "/data/weilink"]
+CMD ["weilink", "mcp", "-t", "http", "--host", "0.0.0.0", "-p", "8000", "--admin-port", "8080", "-d", "/data/weilink"]
