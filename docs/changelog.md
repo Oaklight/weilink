@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.0 (2026-04-01)
+
+### New Features
+
+- **AI coding assistant integration** — new `weilink setup` command installs hooks, MCP config, and slash commands for Claude Code, Codex, and OpenCode with a single command; `weilink setup claude-code` symlinks a full plugin (auto-polling hook + MCP + `/weilink` skill), `weilink setup codex` installs hooks and command, `weilink setup opencode` merges MCP config into `opencode.json`
+- **Hook poll engine** — new `weilink hook-poll` reads the local SQLite message store and outputs new messages as JSON; used by `UserPromptSubmit` hooks in Claude Code and Codex to auto-inject incoming WeChat messages into conversation context
+
 ## v0.5.1 (2026-04-01)
 
 ### Improvements
