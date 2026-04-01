@@ -20,7 +20,7 @@ graph TB
         aes_py["_aes.py<br/><i>Pure-Python AES fallback</i>"]
         qr["_qr.py<br/><i>QR code generation</i>"]
         store["_store.py<br/><i>SQLite message persistence</i>"]
-        filelock["_filelock.py<br/><i>Cross-process file locks</i>"]
+        filelock["filelock.py<br/><i>Cross-process file locks</i>"]
     end
 
     client --> protocol
@@ -171,7 +171,7 @@ flowchart TD
 
 ## Cross-Process File Locking
 
-When multiple processes share the same data directory (e.g., an SDK script and a stdio MCP server both using `~/.weilink/`), WeiLink coordinates access using two `fcntl.flock()`-based file locks:
+When multiple processes share the same data directory (e.g., an SDK script and a stdio MCP server both using `~/.weilink/`), WeiLink coordinates access using two advisory file locks (`fcntl.flock` on Unix, `msvcrt.locking` on Windows):
 
 ```mermaid
 flowchart TD
@@ -211,7 +211,7 @@ flowchart TD
 
 **Atomic file writes:** All writes to `token.json`, `contexts.json`, and `.default_session` use a write-to-temp-then-`os.replace()` pattern, ensuring that a process crash mid-write never produces a corrupted file.
 
-On Windows, file locking is skipped (no `fcntl`) and WeiLink operates as before.
+On Windows, `msvcrt.locking` is used with exponential-backoff polling for blocking semantics. File locking works on all platforms.
 
 ### Cooperative Polling Fallback
 

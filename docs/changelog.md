@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.1 (2026-04-01)
+
+### Improvements
+
+- **Cross-platform file locking** ([#8](https://github.com/Oaklight/weilink/pull/8)) — replace internal `_filelock.py` (no-op on Windows) with [zerodep](https://github.com/Oaklight/zerodep) `filelock` module; Windows now uses `msvcrt.locking` for real cross-process locking instead of silently skipping
+
 ## v0.5.0 (2026-03-31)
 
 ### Breaking Changes
