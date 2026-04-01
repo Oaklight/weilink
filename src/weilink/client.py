@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable
 
-from weilink._filelock import FileLock
+from weilink.filelock import FileLock
 from weilink import _protocol as proto
 from weilink.models import (
     BotInfo,

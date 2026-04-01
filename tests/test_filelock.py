@@ -5,13 +5,13 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pytest
 
-from weilink._filelock import FileLock
+from weilink.filelock import FileLock
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="fcntl not available on Windows")
 class TestFileLock:
+    """Cross-platform file lock tests (Unix fcntl + Windows msvcrt)."""
+
     def test_lock_creates_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             lock_path = Path(tmpdir) / ".lock"
@@ -42,16 +42,28 @@ class TestFileLock:
             lock_path = Path(tmpdir) / ".lock"
             # Holder acquires lock via a separate fd
             holder_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-            import fcntl
 
-            fcntl.flock(holder_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if sys.platform == "win32":
+                import msvcrt
+
+                os.write(holder_fd, b"\x00")
+                os.lseek(holder_fd, 0, os.SEEK_SET)
+                msvcrt.locking(holder_fd, msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(holder_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
             try:
                 lock = FileLock(lock_path)
                 assert lock.try_lock() is False
                 lock.close()
             finally:
-                fcntl.flock(holder_fd, fcntl.LOCK_UN)
+                if sys.platform == "win32":
+                    os.lseek(holder_fd, 0, os.SEEK_SET)
+                    msvcrt.locking(holder_fd, msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(holder_fd, fcntl.LOCK_UN)
                 os.close(holder_fd)
 
     def test_unlock_releases_for_others(self):

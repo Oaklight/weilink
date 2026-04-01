@@ -15,7 +15,7 @@ from pathlib import Path
 # Ensure the source tree is importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from weilink._filelock import FileLock
+from weilink.filelock import FileLock
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
