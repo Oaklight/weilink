@@ -85,6 +85,7 @@ nav:
       - 核心概念: usage/concepts.md
       - 多会话: usage/multi_session.md
       - MCP 服务器: usage/mcp.md
+      - IDE 集成: usage/setup.md
       - OpenAPI 服务器: usage/openapi.md
       - 管理面板: usage/admin.md
       - CLI 参考: usage/cli.md

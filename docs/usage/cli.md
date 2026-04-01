@@ -19,6 +19,11 @@ weilink admin --host 0.0.0.0 -p 8080
 weilink mcp -t sse --host 0.0.0.0 -p 8000 --admin-port 8080
 weilink openapi --host 0.0.0.0 -p 8000
 
+# 集成命令
+weilink setup claude-code                       # 安装 Claude Code 插件
+weilink setup codex                             # 安装 Codex 集成
+weilink setup opencode                          # 安装 OpenCode 集成
+
 # 其他命令
 weilink migrate openclaw
 ```
@@ -240,6 +245,32 @@ weilink sessions default work                # 设置默认会话
 | `--admin-port` | 同时在此端口启动管理面板（共用 host） | *（不启用）* |
 | `--log-level` | 日志级别（`DEBUG`、`INFO`、`WARNING`、`ERROR`） | `INFO` |
 | `--no-banner` | 抑制启动时的 ASCII 横幅 | *（关闭）* |
+
+## 集成命令
+
+### `weilink setup`
+
+设置 AI 编程助手集成。详细说明请参阅 [IDE 集成](setup.md)。
+
+```bash
+weilink setup claude-code              # 安装 Claude Code 插件（软链接）
+weilink setup claude-code --copy       # 复制文件（用于 Windows）
+weilink setup claude-code --uninstall  # 移除插件
+weilink setup codex                    # 安装 Codex 集成
+weilink setup codex --uninstall        # 移除集成
+weilink setup opencode                 # 安装 OpenCode 集成
+weilink setup opencode --uninstall     # 移除集成
+```
+
+### `weilink hook-poll`
+
+从消息存储中轮询新消息。由 hook 脚本内部使用。详见 [IDE 集成](setup.md#weilink-hook-poll)。
+
+```bash
+weilink hook-poll                      # 轮询新消息
+weilink hook-poll --limit 50           # 最多返回 50 条消息
+weilink hook-poll --reset              # 清除轮询状态
+```
 
 ## 其他命令
 

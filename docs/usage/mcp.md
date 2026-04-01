@@ -110,6 +110,9 @@ weilink mcp -t http -p 8000
 !!! tip "为什么用 HTTP？"
     HTTP 传输让 MCP 服务器在 Claude Code 会话之间持久运行。只需启动一次，所有 Claude Code 会话都可以连接同一个服务器实例——无需在开始新对话时重启服务器。
 
+!!! tip "一键安装"
+    对于 Claude Code 和 Codex，`weilink setup` 可以自动完成全部配置，包括新消息自动轮询的 hook。详见 [IDE 集成](setup.md)。
+
 ### Cursor / VS Code
 
 在 MCP 设置中添加：
