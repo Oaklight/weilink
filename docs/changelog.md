@@ -1,5 +1,12 @@
 # 更新日志
 
+## v0.6.0 (2026-04-01)
+
+### 新功能
+
+- **AI 编程助手集成** — 新增 `weilink setup` 命令，一条命令即可为 Claude Code、Codex 和 OpenCode 安装 hooks、MCP 配置和斜杠命令；`weilink setup claude-code` 以符号链接方式安装完整插件（自动轮询 hook + MCP + `/weilink` 技能），`weilink setup codex` 安装 hooks 和命令，`weilink setup opencode` 将 MCP 配置合并到 `opencode.json`
+- **Hook 轮询引擎** — 新增 `weilink hook-poll`，读取本地 SQLite 消息存储并以 JSON 格式输出新消息；Claude Code 和 Codex 的 `UserPromptSubmit` hook 通过此引擎自动将微信新消息注入对话上下文
+
 ## v0.5.1 (2026-04-01)
 
 ### 改进
