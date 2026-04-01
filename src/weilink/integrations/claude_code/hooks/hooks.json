@@ -1,0 +1,16 @@
+{
+  "description": "WeiLink polling hook — injects new WeChat messages as context on each prompt submission",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/poll_inject.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

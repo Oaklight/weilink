@@ -1,6 +1,6 @@
 """WeiLink - Lightweight Python SDK for WeChat iLink Bot protocol."""
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 from weilink._protocol import (
     ILinkError,

@@ -1,0 +1,9 @@
+{
+  "name": "weilink",
+  "description": "WeChat messaging for Claude Code — receive and send WeChat messages, download media, and manage bot sessions via the iLink Bot protocol.",
+  "version": "0.6.0",
+  "author": {
+    "name": "Oaklight",
+    "email": "oaklight@gmx.com"
+  }
+}

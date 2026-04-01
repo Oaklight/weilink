@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.codex/hooks/weilink_poll_inject.py",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

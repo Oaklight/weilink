@@ -503,6 +503,76 @@ def _run_mcp(args: argparse.Namespace) -> None:
     )
 
 
+def _run_setup(args: argparse.Namespace) -> None:
+    """Set up integration with an AI coding assistant."""
+    target = args.setup_target
+
+    if target == "claude-code":
+        from weilink._setup import setup_claude_code
+
+        result = setup_claude_code(uninstall=args.uninstall, copy=args.copy)
+    elif target == "codex":
+        from weilink._setup import setup_codex
+
+        result = setup_codex(uninstall=args.uninstall)
+    elif target == "opencode":
+        from weilink._setup import setup_opencode
+
+        result = setup_opencode(uninstall=args.uninstall)
+    else:
+        print(
+            f"Unknown target: {target}. Available: claude-code, codex, opencode",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if _json_flag(args):
+        print(
+            json.dumps(
+                {
+                    "target": result.target,
+                    "action": result.action,
+                    "detail": result.detail,
+                }
+            )
+        )
+    else:
+        if result.action == "installed":
+            print(f"WeiLink {result.target} integration installed.")
+            print(f"  {result.detail}")
+            if target == "claude-code":
+                print("\n  Restart Claude Code to activate.")
+                print("  Use /weilink to check status or send messages.")
+            elif target == "opencode":
+                print("\n  Restart OpenCode to activate.")
+                print("  Use /weilink to check status or send messages.")
+        elif result.action == "uninstalled":
+            print(f"WeiLink {result.target} integration removed.")
+            print(f"  {result.detail}")
+        elif result.action == "already_installed":
+            print("Already installed.")
+            print(f"  {result.detail}")
+        elif result.action == "not_installed":
+            print("Not installed.")
+            print(f"  {result.detail}")
+        else:
+            print(f"Error: {result.detail}", file=sys.stderr)
+            sys.exit(1)
+
+
+def _run_hook_poll(args: argparse.Namespace) -> None:
+    """Run the hook-poll engine."""
+    from weilink._hook import run_hook_poll
+
+    argv: list[str] = []
+    if args.base_path:
+        argv.extend(["--base-path", args.base_path])
+    argv.extend(["--limit", str(args.limit)])
+    if args.reset:
+        argv.append("--reset")
+    run_hook_poll(argv)
+
+
 def _run_migrate(args: argparse.Namespace) -> None:
     """Run credential migration from another tool."""
     from pathlib import Path
@@ -595,6 +665,10 @@ def main(argv: list[str] | None = None) -> None:
             "  admin       Start the web admin panel\n"
             "  mcp         Start the MCP server\n"
             "  openapi     Start the OpenAPI (REST) server\n"
+            "\n"
+            "integration commands:\n"
+            "  setup       Set up AI coding assistant integration\n"
+            "  hook-poll   Poll message store for new messages (internal)\n"
             "\n"
             "other commands:\n"
             "  migrate     Migrate credentials from another tool"
@@ -904,6 +978,81 @@ def main(argv: list[str] | None = None) -> None:
         help="show what would be migrated without writing files",
     )
 
+    # ── setup subcommand ───────────────────────────────────────────
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Set up integration with AI coding assistants.",
+    )
+    _add_log_level(setup_parser)
+    setup_sub = setup_parser.add_subparsers(dest="setup_target", required=True)
+
+    cc_parser = setup_sub.add_parser(
+        "claude-code",
+        help="Install WeiLink plugin for Claude Code.",
+    )
+    cc_parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        default=False,
+        help="remove the plugin instead of installing",
+    )
+    cc_parser.add_argument(
+        "--copy",
+        action="store_true",
+        default=False,
+        help="copy files instead of symlinking (use on Windows)",
+    )
+    _add_json(cc_parser)
+
+    codex_parser = setup_sub.add_parser(
+        "codex",
+        help="Install WeiLink integration for OpenAI Codex CLI.",
+    )
+    codex_parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        default=False,
+        help="remove the integration instead of installing",
+    )
+    _add_json(codex_parser)
+
+    opencode_parser = setup_sub.add_parser(
+        "opencode",
+        help="Install WeiLink integration for OpenCode.",
+    )
+    opencode_parser.add_argument(
+        "--uninstall",
+        action="store_true",
+        default=False,
+        help="remove the integration instead of installing",
+    )
+    _add_json(opencode_parser)
+
+    # ── hook-poll subcommand ─────────────────────────────────────────
+    hookpoll_parser = subparsers.add_parser(
+        "hook-poll",
+        help="Poll message store for new messages (used by hooks).",
+    )
+    _add_base_path(hookpoll_parser)
+    hookpoll_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="max messages to return (default: 20)",
+    )
+    hookpoll_parser.add_argument(
+        "--reset",
+        action="store_true",
+        default=False,
+        help="clear the poll state file and exit",
+    )
+    hookpoll_parser.add_argument(
+        "--log-level",
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="logging level (default: WARNING)",
+    )
+
     # ── mcp subcommand ────────────────────────────────────────────
     mcp_parser = subparsers.add_parser(
         "mcp",
@@ -984,6 +1133,10 @@ def main(argv: list[str] | None = None) -> None:
         _run_openapi(args)
     elif args.command == "mcp":
         _run_mcp(args)
+    elif args.command == "setup":
+        _run_setup(args)
+    elif args.command == "hook-poll":
+        _run_hook_poll(args)
 
 
 if __name__ == "__main__":

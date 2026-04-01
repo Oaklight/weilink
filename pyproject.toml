@@ -92,5 +92,10 @@ version = { attr = "weilink.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-"weilink" = ["py.typed"]
+"weilink" = [
+    "py.typed",
+    "integrations/**/*",
+    "integrations/**/.mcp.json",
+    "integrations/**/.claude-plugin/*.json",
+]
 "weilink.admin" = ["*.html", "locales/*.json"]

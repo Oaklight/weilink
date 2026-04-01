@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "weilink": {
+      "command": "weilink",
+      "args": ["mcp"]
+    }
+  }
+}
