@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import signal
 import sys
 import threading
@@ -427,7 +428,7 @@ def _run_sessions(args: argparse.Namespace) -> None:
 def _run_admin(args: argparse.Namespace) -> None:
     """Start the admin panel and block until terminated."""
     from weilink import WeiLink
-    from weilink._banner import display_startup_banner
+    from weilink._cli import display_startup_banner
 
     display_startup_banner(no_banner=args.no_banner)
 
@@ -470,7 +471,7 @@ def _run_admin(args: argparse.Namespace) -> None:
 
 def _run_mcp(args: argparse.Namespace) -> None:
     """Start the MCP server, optionally with an admin panel."""
-    from weilink._banner import display_startup_banner
+    from weilink._cli import display_startup_banner
     from weilink.server.app import run_mcp
 
     # Skip banner for stdio (stdout is the MCP protocol channel).
@@ -495,11 +496,16 @@ def _run_mcp(args: argparse.Namespace) -> None:
     if transport_raw == "http":
         transport_raw = "streamable-http"
     transport = cast(Literal["stdio", "sse", "streamable-http"], transport_raw)
+
+    # CLI --token takes precedence over WEILINK_MCP_TOKEN env var.
+    token = args.token or os.environ.get("WEILINK_MCP_TOKEN")
+
     run_mcp(
         transport=transport,
         host=args.host,
         port=args.port,
         base_path=base_path,
+        token=token,
     )
 
 
@@ -508,15 +514,15 @@ def _run_setup(args: argparse.Namespace) -> None:
     target = args.setup_target
 
     if target == "claude-code":
-        from weilink._setup import setup_claude_code
+        from weilink._cli import setup_claude_code
 
         result = setup_claude_code(uninstall=args.uninstall, copy=args.copy)
     elif target == "codex":
-        from weilink._setup import setup_codex
+        from weilink._cli import setup_codex
 
         result = setup_codex(uninstall=args.uninstall)
     elif target == "opencode":
-        from weilink._setup import setup_opencode
+        from weilink._cli import setup_opencode
 
         result = setup_opencode(uninstall=args.uninstall)
     else:
@@ -562,7 +568,7 @@ def _run_setup(args: argparse.Namespace) -> None:
 
 def _run_hook_poll(args: argparse.Namespace) -> None:
     """Run the hook-poll engine."""
-    from weilink._hook import run_hook_poll
+    from weilink._cli import run_hook_poll
 
     argv: list[str] = []
     if args.base_path:
@@ -617,7 +623,7 @@ def _run_migrate(args: argparse.Namespace) -> None:
 
 def _run_openapi(args: argparse.Namespace) -> None:
     """Start the OpenAPI server, optionally with an admin panel."""
-    from weilink._banner import display_startup_banner
+    from weilink._cli import display_startup_banner
     from weilink.server.app import run_openapi
 
     display_startup_banner(no_banner=args.no_banner)
@@ -645,7 +651,7 @@ def _run_openapi(args: argparse.Namespace) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     """Unified WeiLink CLI entry point."""
-    from weilink._banner import version_check
+    from weilink._cli import version_check
 
     parser = argparse.ArgumentParser(
         prog="weilink",
@@ -1094,6 +1100,14 @@ def main(argv: list[str] | None = None) -> None:
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="logging level (default: INFO)",
+    )
+    mcp_parser.add_argument(
+        "--token",
+        default=None,
+        help=(
+            "bearer token for HTTP authentication "
+            "(env: WEILINK_MCP_TOKEN, ignored for stdio)"
+        ),
     )
     mcp_parser.add_argument(
         "--no-banner",

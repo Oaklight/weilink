@@ -9,12 +9,12 @@ import os
 
 import pytest
 
-from weilink._aes import aes128_ecb_decrypt as py_decrypt
-from weilink._aes import aes128_ecb_encrypt as py_encrypt
+from weilink._crypto._aes import aes128_ecb_decrypt as py_decrypt
+from weilink._crypto._aes import aes128_ecb_encrypt as py_encrypt
 
 try:
-    from weilink._aes_openssl import aes128_ecb_decrypt as ossl_decrypt
-    from weilink._aes_openssl import aes128_ecb_encrypt as ossl_encrypt
+    from weilink._crypto._aes_openssl import aes128_ecb_decrypt as ossl_decrypt
+    from weilink._crypto._aes_openssl import aes128_ecb_encrypt as ossl_encrypt
 
     HAS_OPENSSL = True
 except (ImportError, OSError):

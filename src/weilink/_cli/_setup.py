@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-_INTEGRATIONS = Path(__file__).parent / "integrations"
+_INTEGRATIONS = Path(__file__).resolve().parent.parent / "integrations"
 
 
 @dataclass
