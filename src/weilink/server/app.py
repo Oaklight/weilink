@@ -586,11 +586,128 @@ def build_registry():
     return registry
 
 
+class _BearerAuthMiddleware:
+    """ASGI middleware that validates a Bearer token on HTTP requests.
+
+    Only protects paths listed in *protected_prefixes*.  Other paths
+    (e.g. ``/.well-known/``) are forwarded without auth so that MCP
+    clients can perform OAuth discovery and receive a normal 404
+    instead of a misleading 401.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        token: str,
+        protected_prefixes: tuple[str, ...] = ("/mcp", "/sse"),
+    ) -> None:
+        self.app = app
+        self.token = token
+        self.protected_prefixes = protected_prefixes
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        if scope["type"] == "http":
+            path: str = scope.get("path", "")
+            if any(path.startswith(p) for p in self.protected_prefixes):
+                headers = dict(scope.get("headers", []))
+                auth = headers.get(b"authorization", b"").decode()
+                if auth != f"Bearer {self.token}":
+                    from starlette.responses import Response
+
+                    resp = Response(
+                        "Unauthorized",
+                        status_code=401,
+                    )
+                    await resp(scope, receive, send)
+                    return
+        await self.app(scope, receive, send)
+
+
+async def _run_sse_with_auth(
+    server: Any,
+    host: str,
+    port: int,
+    token: str,
+) -> None:
+    """Run SSE transport with bearer token auth middleware."""
+    import uvicorn
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.requests import Request
+    from starlette.responses import Response
+    from starlette.routing import Mount, Route
+
+    sse = SseServerTransport("/sse/messages/")
+
+    async def handle_sse(request: Request) -> Response:
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await server.run(
+                streams[0],
+                streams[1],
+                server.create_initialization_options(),
+            )
+        return Response()
+
+    routes = [
+        Route("/sse", endpoint=handle_sse, methods=["GET"]),
+        Mount("/sse/messages/", app=sse.handle_post_message),
+    ]
+    app: Any = Starlette(routes=routes)
+    app = _BearerAuthMiddleware(app, token)
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    uvicorn_server = uvicorn.Server(config)
+    await uvicorn_server.serve()
+
+
+async def _run_streamable_http_with_auth(
+    server: Any,
+    host: str,
+    port: int,
+    token: str,
+) -> None:
+    """Run streamable-http transport with bearer token auth middleware."""
+    import uvicorn
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.types import Receive, Scope, Send
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        json_response=False,
+        stateless=False,
+    )
+
+    class _StreamableHTTPASGIApp:
+        def __init__(self, manager: StreamableHTTPSessionManager) -> None:
+            self.manager = manager
+
+        async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+            await self.manager.handle_request(scope, receive, send)
+
+    streamable_http_app = _StreamableHTTPASGIApp(session_manager)
+
+    routes = [Route("/mcp", endpoint=streamable_http_app)]
+    app: Any = Starlette(
+        routes=routes,
+        lifespan=lambda app: session_manager.run(),
+    )
+    app = _BearerAuthMiddleware(app, token)
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="info")
+    uvicorn_server = uvicorn.Server(config)
+    await uvicorn_server.serve()
+
+
 def run_mcp(
     transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
     host: str = "127.0.0.1",
     port: int = 8000,
     base_path: Path | None = None,
+    token: str | None = None,
 ) -> None:
     """Run the MCP server with the specified transport.
 
@@ -599,25 +716,36 @@ def run_mcp(
         host: Host address for SSE / streamable-http transports.
         port: Port for SSE / streamable-http transports.
         base_path: Optional WeiLink data directory.
+        token: Optional bearer token for HTTP authentication.
+            When set, clients must send ``Authorization: Bearer <token>``
+            on every request.
     """
     from toolregistry_server import RouteTable
-    from toolregistry_server.mcp import (
-        create_mcp_server,
-        run_sse,
-        run_stdio,
-        run_streamable_http,
-    )
+    from toolregistry_server.mcp import create_mcp_server
 
     _init_client(base_path)
     route_table = RouteTable(build_registry())
     server = create_mcp_server(route_table, name="weilink")
 
-    if transport == "stdio":
-        asyncio.run(run_stdio(server))
-    elif transport == "sse":
-        asyncio.run(run_sse(server, host=host, port=port))
+    if token and transport != "stdio":
+        logger.info("Bearer token authentication enabled for MCP server")
+        if transport == "sse":
+            asyncio.run(_run_sse_with_auth(server, host, port, token))
+        else:
+            asyncio.run(_run_streamable_http_with_auth(server, host, port, token))
     else:
-        asyncio.run(run_streamable_http(server, host=host, port=port))
+        from toolregistry_server.mcp import (
+            run_sse,
+            run_stdio,
+            run_streamable_http,
+        )
+
+        if transport == "stdio":
+            asyncio.run(run_stdio(server))
+        elif transport == "sse":
+            asyncio.run(run_sse(server, host=host, port=port))
+        else:
+            asyncio.run(run_streamable_http(server, host=host, port=port))
 
 
 def run_openapi(
