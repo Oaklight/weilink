@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 
 
-from weilink.filelock import FileLock
+from weilink._vendor.filelock import FileLock
 
 
 class TestFileLock:

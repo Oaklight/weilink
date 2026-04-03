@@ -17,8 +17,21 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt, aes_ecb_padded_size
 from weilink.models import UploadMediaType, UploadedMedia
+
+# AES backend: prefer OpenSSL for performance, fall back to pure Python.
+try:
+    from weilink._vendor.aes_openssl import aes_ecb_decrypt, aes_ecb_encrypt
+except (ImportError, OSError):
+    from weilink._vendor.aes import aes_ecb_decrypt, aes_ecb_encrypt
+
+_BLOCK = 16
+
+
+def _aes_ecb_padded_size(plaintext_size: int) -> int:
+    """Calculate the ciphertext size after AES-ECB + PKCS7 padding."""
+    return plaintext_size + (_BLOCK - plaintext_size % _BLOCK)
+
 
 CDN_BASE = "https://novac2c.cdn.weixin.qq.com/c2c"
 UPLOAD_MAX_RETRIES = 3
@@ -66,7 +79,7 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
     with urllib.request.urlopen(req, timeout=60) as resp:
         encrypted = resp.read()
 
-    return aes128_ecb_decrypt(encrypted, key)
+    return aes_ecb_decrypt(encrypted, key)
 
 
 def upload_media(
@@ -95,7 +108,7 @@ def upload_media(
     # Compute file metadata
     file_md5 = hashlib.md5(file_data).hexdigest()
     file_size = len(file_data)
-    cipher_size = aes_ecb_padded_size(file_size)
+    cipher_size = _aes_ecb_padded_size(file_size)
 
     # Get upload authorisation
     logger.debug(
@@ -122,7 +135,7 @@ def upload_media(
         raise RuntimeError(f"No upload_param in response: {url_resp}")
 
     # Encrypt and upload to CDN
-    encrypted = aes128_ecb_encrypt(file_data, aes_key)
+    encrypted = aes_ecb_encrypt(file_data, aes_key)
 
     upload_url = (
         f"{CDN_BASE}/upload"

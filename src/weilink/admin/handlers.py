@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 def _qr_to_svg(text: str) -> str:
     """Encode text as QR code and return an SVG string."""
-    from weilink._qr import QrCode
+    from weilink._vendor.qr import QrCode
 
     qr = QrCode.encode_text(text, QrCode.Ecc.LOW)
     size = qr.get_size()

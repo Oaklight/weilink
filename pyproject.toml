@@ -61,7 +61,7 @@ select = ["E", "F", "UP"]
 ignore = ["UP007", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/weilink/_qr.py" = ["E501"]
+"src/weilink/_vendor/*.py" = ["E501"]
 
 [tool.ty.environment]
 python-version = "3.10"
@@ -73,7 +73,7 @@ include = ["src", "tests"]
 unresolved-import = "ignore"
 
 [[tool.ty.overrides]]
-include = ["src/weilink/_qr.py"]
+include = ["src/weilink/_vendor/*.py"]
 
 [tool.ty.overrides.rules]
 invalid-argument-type = "ignore"

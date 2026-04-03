@@ -31,18 +31,18 @@ class TestPaddedSize:
     """Tests for aes_ecb_padded_size."""
 
     def test_not_aligned(self) -> None:
-        from weilink._crypto import aes_ecb_padded_size
+        from weilink._cdn import _aes_ecb_padded_size as aes_ecb_padded_size
 
         assert aes_ecb_padded_size(10) == 16
 
     def test_exact_block(self) -> None:
-        from weilink._crypto import aes_ecb_padded_size
+        from weilink._cdn import _aes_ecb_padded_size as aes_ecb_padded_size
 
         # Exact block size gets a full padding block
         assert aes_ecb_padded_size(16) == 32
 
     def test_zero(self) -> None:
-        from weilink._crypto import aes_ecb_padded_size
+        from weilink._cdn import _aes_ecb_padded_size as aes_ecb_padded_size
 
         assert aes_ecb_padded_size(0) == 16
 
@@ -51,7 +51,10 @@ class TestAesEncryptDecrypt:
     """Tests for AES-128-ECB encrypt/decrypt via the _crypto facade."""
 
     def test_roundtrip(self) -> None:
-        from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt
+        from weilink._cdn import (
+            aes_ecb_decrypt as aes128_ecb_decrypt,
+            aes_ecb_encrypt as aes128_ecb_encrypt,
+        )
 
         key = b"\x42" * 16
         data = b"secret message for testing AES"
@@ -61,7 +64,10 @@ class TestAesEncryptDecrypt:
         assert decrypted == data
 
     def test_large_data(self) -> None:
-        from weilink._crypto import aes128_ecb_decrypt, aes128_ecb_encrypt
+        from weilink._cdn import (
+            aes_ecb_decrypt as aes128_ecb_decrypt,
+            aes_ecb_encrypt as aes128_ecb_encrypt,
+        )
 
         key = os.urandom(16)
         data = os.urandom(1024)
