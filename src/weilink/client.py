@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from collections.abc import Callable
 
-from weilink.filelock import FileLock
+from weilink._vendor.filelock import FileLock
 from weilink import _protocol as proto
 from weilink.models import (
     BotInfo,
@@ -1679,7 +1679,7 @@ class WeiLink:
 
         print(f"\nScan this QR code with WeChat:\n{url}\n")
 
-        from weilink._qr import print_qr_terminal
+        from weilink._vendor.qr import print_qr_terminal
 
         print_qr_terminal(url)
 

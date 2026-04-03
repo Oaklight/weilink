@@ -1,33 +1,34 @@
-#
-# QR Code generator library (Python)
-#
-# Copyright (c) Project Nayuki. (MIT License)
-# https://www.nayuki.io/page/qr-code-generator-library
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal in
-# the Software without restriction, including without limitation the rights to
-# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-# the Software, and to permit persons to whom the Software is furnished to do so,
-# subject to the following conditions:
-# - The above copyright notice and this permission notice shall be included in
-#   all copies or substantial portions of the Software.
-# - The Software is provided "as is", without warranty of any kind, express or
-#   implied, including but not limited to the warranties of merchantability,
-#   fitness for a particular purpose and noninfringement. In no event shall the
-#   authors or copyright holders be liable for any claim, damages or other
-#   liability, whether in an action of contract, tort or otherwise, arising from,
-#   out of or in connection with the Software or the use or other dealings in the
-#   Software.
-#
+# /// zerodep
+# version = "0.3.0"
+# deps = []
+# tier = "simple"
+# category = "utility"
+# ///
+
+"""QR Code generator library (Python).
+
+Part of zerodep: https://github.com/Oaklight/zerodep
+Copyright (c) 2026 Peng Ding. MIT License.
+
+Based on Project Nayuki's QR Code generator (MIT License):
+    Copyright (c) Project Nayuki
+    https://www.nayuki.io/page/qr-code-generator-library
+"""
 
 from __future__ import annotations
+
 import collections
 import itertools
 import re
 from collections.abc import Sequence
 from typing import Union
 
+__all__ = [
+    "QrCode",
+    "QrSegment",
+    "DataTooLongError",
+    "print_qr_terminal",
+]
 
 # ---- QR Code symbol class ----
 
@@ -394,10 +395,10 @@ class QrCode:
                 k : k + shortblocklen - blockecclen + (0 if i < numshortblocks else 1)
             ]
             k += len(dat)
-            ecc: bytes = QrCode._reed_solomon_compute_remainder(dat, rsdiv)
+            ecc: bytes = QrCode._reed_solomon_compute_remainder(bytes(dat), rsdiv)
             if i < numshortblocks:
                 dat.append(0)
-            blocks.append(dat + ecc)
+            blocks.append(bytes(dat) + ecc)
         assert k == len(data)
 
         # Interleave (not concatenate) the bytes from every block into a single sequence
@@ -408,7 +409,7 @@ class QrCode:
                 if (i != shortblocklen - blockecclen) or (j >= numshortblocks):
                     result.append(blk[i])
         assert len(result) == rawcodewords
-        return result
+        return bytes(result)
 
     def _draw_codewords(self, data: bytes) -> None:
         """Draws the given sequence of 8-bit codewords (data and error correction) onto the entire
@@ -596,7 +597,7 @@ class QrCode:
                 if j + 1 < degree:
                     result[j] ^= result[j + 1]
             root = QrCode._reed_solomon_multiply(root, 0x02)
-        return result
+        return bytes(result)
 
     @staticmethod
     def _reed_solomon_compute_remainder(data: bytes, divisor: bytes) -> bytes:
@@ -607,7 +608,7 @@ class QrCode:
             result.append(0)
             for i, coef in enumerate(divisor):
                 result[i] ^= QrCode._reed_solomon_multiply(coef, factor)
-        return result
+        return bytes(result)
 
     @staticmethod
     def _reed_solomon_multiply(x: int, y: int) -> int:
