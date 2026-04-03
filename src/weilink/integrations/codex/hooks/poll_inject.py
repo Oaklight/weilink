@@ -34,7 +34,7 @@ def _poll_via_cli() -> dict | None:
 def _poll_via_import() -> dict | None:
     """Fallback: import the hook engine directly (no subprocess)."""
     try:
-        from weilink._hook import hook_poll
+        from weilink._cli import hook_poll
 
         return hook_poll()
     except Exception:

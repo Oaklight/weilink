@@ -11,11 +11,11 @@ from __future__ import annotations
 _BLOCK = 16
 
 try:
-    from weilink._aes_openssl import aes128_ecb_decrypt, aes128_ecb_encrypt
+    from ._aes_openssl import aes128_ecb_decrypt, aes128_ecb_encrypt
 
     backend = "openssl"
 except (ImportError, OSError):
-    from weilink._aes import aes128_ecb_decrypt, aes128_ecb_encrypt
+    from ._aes import aes128_ecb_decrypt, aes128_ecb_encrypt
 
     backend = "python"
 
