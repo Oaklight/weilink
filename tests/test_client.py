@@ -1700,3 +1700,304 @@ class TestRouteC:
         finally:
             wl._poll_lock.unlock()
             wl.close()
+
+
+# ------------------------------------------------------------------
+# Dispatcher race-condition tests
+# ------------------------------------------------------------------
+
+
+class TestDispatcherConcurrency:
+    """Verify dispatcher start/stop/restart under concurrent access."""
+
+    def _make_wl_with_fake_recv(self, tmpdir, messages):
+        """Create a WeiLink with _recv_direct returning canned messages."""
+        token_path = Path(tmpdir) / "token.json"
+        wl = WeiLink(token_path=token_path)
+        call_count = [0]
+
+        def fake_recv(timeout=35.0):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return list(messages)
+            time.sleep(0.5)
+            return []
+
+        wl._recv_direct = fake_recv
+        return wl
+
+    def test_stop_start_rapid_cycle(self):
+        """Rapidly cycling stop/start should not raise or leave stale state."""
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="x", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            for _ in range(5):
+                wl.run_background()
+                wl.stop()
+
+            # After all cycles, dispatcher should be cleanly stopped
+            assert wl._dispatcher_thread is None
+            assert not wl._dispatcher_stop.is_set()
+
+    def test_double_start_is_idempotent(self):
+        """Calling run_background twice should not create a second thread."""
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="x", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            wl.run_background()
+            thread1 = wl._dispatcher_thread
+
+            wl.run_background()
+            thread2 = wl._dispatcher_thread
+
+            assert thread1 is thread2
+            wl.stop()
+
+    def test_recv_during_dispatcher(self):
+        """recv() correctly reads from the internal queue while dispatcher runs."""
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [
+                Message(from_user="a@im.wechat", text="one", message_id=1),
+                Message(from_user="b@im.wechat", text="two", message_id=2),
+                Message(from_user="c@im.wechat", text="three", message_id=3),
+            ]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            wl.run_background()
+            time.sleep(1.0)
+
+            received = wl.recv(timeout=2.0)
+            assert len(received) == 3
+            texts = {m.text for m in received}
+            assert texts == {"one", "two", "three"}
+
+            wl.stop()
+
+    def test_handler_and_queue_both_receive(self):
+        """Both registered handlers and the message queue get the same messages."""
+        from weilink.models import Message
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            msgs = [Message(from_user="u@im.wechat", text="dual", message_id=1)]
+            wl = self._make_wl_with_fake_recv(tmpdir, msgs)
+
+            handler_received = []
+
+            @wl.on_message
+            def handler(msg):
+                handler_received.append(msg)
+
+            wl.run_background()
+            time.sleep(1.0)
+
+            queue_received = wl.recv(timeout=2.0)
+            wl.stop()
+
+            assert len(handler_received) == 1
+            assert handler_received[0].text == "dual"
+            assert len(queue_received) == 1
+            assert queue_received[0].text == "dual"
+
+
+# ------------------------------------------------------------------
+# Multi-consumer correctness tests
+# ------------------------------------------------------------------
+
+
+class TestMultiConsumerCorrectness:
+    """Verify correctness for multiple consumers sharing the same profile."""
+
+    def _setup_base(self, base_path: Path) -> dict:
+        """Create a base_path with a default session."""
+        default_dir = base_path / "default"
+        default_dir.mkdir(parents=True, exist_ok=True)
+        token_data = {
+            "bot_id": "bot1@im.bot",
+            "base_url": "https://example.com",
+            "token": "tok",
+            "user_id": "u@im.wechat",
+            "cursor": "c1",
+        }
+        (default_dir / "token.json").write_text(json.dumps(token_data))
+        return token_data
+
+    def test_recv_merge_preserves_other_process_send_counts(self, tmp_path: Path):
+        """recv() merge does not overwrite send_counts from other processes.
+
+        Scenario:
+        1. Process B sends a message → increments sc on disk for user_x
+        2. Process A polls → receives a new message from user_y
+        3. Process A's merge should preserve user_x's sc from disk
+        """
+        self._setup_base(tmp_path)
+        default_dir = tmp_path / "default"
+
+        # Simulate disk state: user_x has sc=3 (set by another process)
+        now = time.time()
+        ctx_data = {
+            "user_x@im.wechat": {
+                "t": "tok_x",
+                "ts": now,
+                "sc": 3,
+                "first_seen": now - 500,
+            },
+            "user_y@im.wechat": {
+                "t": "tok_y_old",
+                "ts": now - 100,
+                "sc": 0,
+                "first_seen": now - 1000,
+            },
+        }
+        (default_dir / "contexts.json").write_text(json.dumps(ctx_data))
+
+        wl = WeiLink(base_path=tmp_path)
+        session = wl._default_session
+
+        # Simulate recv updating only user_y with a new token
+        session.context_tokens["user_y@im.wechat"] = "tok_y_new"
+        session.context_timestamps["user_y@im.wechat"] = now
+        session.send_counts["user_y@im.wechat"] = 0
+
+        updated_users = {"user_y@im.wechat"}
+        wl._merge_contexts_from_disk(session, updated_users)
+
+        # user_x's send_count from disk should be preserved
+        assert session.send_counts.get("user_x@im.wechat") == 3
+        assert session.context_tokens.get("user_x@im.wechat") == "tok_x"
+
+        # user_y keeps in-memory state (fresh token from recv)
+        assert session.context_tokens.get("user_y@im.wechat") == "tok_y_new"
+
+        wl.close()
+
+    def test_send_uses_fresh_disk_contexts(self, tmp_path: Path):
+        """send() re-reads contexts from disk under data_lock, picking up
+        changes made by other processes since the last load."""
+        self._setup_base(tmp_path)
+        default_dir = tmp_path / "default"
+
+        now = time.time()
+        ctx_v1 = {
+            "target@im.wechat": {
+                "t": "tok_v1",
+                "ts": now,
+                "sc": 2,
+                "first_seen": now - 300,
+            }
+        }
+        (default_dir / "contexts.json").write_text(json.dumps(ctx_v1))
+
+        wl = WeiLink(base_path=tmp_path)
+        assert wl._default_session.send_counts.get("target@im.wechat") == 2
+
+        # Another process bumps send_count to 7
+        ctx_v2 = {
+            "target@im.wechat": {
+                "t": "tok_v1",
+                "ts": now,
+                "sc": 7,
+                "first_seen": now - 300,
+            }
+        }
+        (default_dir / "contexts.json").write_text(json.dumps(ctx_v2))
+
+        # Reload under data_lock (mimics what send() does internally)
+        with wl._data_lock:
+            wl._load_session_contexts(wl._default_session)
+
+        assert wl._default_session.send_counts.get("target@im.wechat") == 7
+        wl.close()
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="fcntl not available on Windows"
+    )
+    def test_route_c_message_content_integrity(self, tmp_path: Path):
+        """Route C fallback returns messages with correct content and metadata."""
+        self._setup_base(tmp_path)
+
+        from weilink.models import Message, MessageType
+
+        wl_primary = WeiLink(base_path=tmp_path, message_store=True)
+
+        # Store several messages with various types
+        msgs = [
+            Message(
+                from_user="alice@im.wechat",
+                msg_type=MessageType.TEXT,
+                text="hello",
+                timestamp=int(time.time() * 1000),
+                message_id=100,
+                bot_id="bot1@im.bot",
+            ),
+            Message(
+                from_user="bob@im.wechat",
+                msg_type=MessageType.TEXT,
+                text="world",
+                timestamp=int(time.time() * 1000),
+                message_id=101,
+                bot_id="bot1@im.bot",
+            ),
+        ]
+        wl_primary._message_store.store(msgs, direction=1)
+
+        # Primary holds poll_lock
+        wl_primary._poll_lock.lock()
+        try:
+            wl_secondary = WeiLink(base_path=tmp_path, message_store=True)
+            result = wl_secondary._recv_session(
+                wl_secondary._default_session, timeout=1
+            )
+
+            assert len(result) == 2
+            by_id = {m.message_id: m for m in result}
+            assert by_id[100].from_user == "alice@im.wechat"
+            assert by_id[100].text == "hello"
+            assert by_id[101].from_user == "bob@im.wechat"
+            assert by_id[101].text == "world"
+
+            wl_secondary.close()
+        finally:
+            wl_primary._poll_lock.unlock()
+            wl_primary.close()
+
+    def test_context_expiry_filters_stale_tokens(self, tmp_path: Path):
+        """Stale context tokens (>24h) should not be loaded from disk."""
+        self._setup_base(tmp_path)
+        default_dir = tmp_path / "default"
+
+        now = time.time()
+        ctx_data = {
+            "fresh@im.wechat": {
+                "t": "tok_fresh",
+                "ts": now - 100,
+                "sc": 1,
+                "first_seen": now - 500,
+            },
+            "stale@im.wechat": {
+                "t": "tok_stale",
+                "ts": now - 25 * 3600,  # 25 hours old
+                "sc": 5,
+                "first_seen": now - 30 * 3600,
+            },
+        }
+        (default_dir / "contexts.json").write_text(json.dumps(ctx_data))
+
+        wl = WeiLink(base_path=tmp_path)
+        session = wl._default_session
+
+        # Fresh token loaded
+        assert session.context_tokens.get("fresh@im.wechat") == "tok_fresh"
+        assert session.send_counts.get("fresh@im.wechat") == 1
+
+        # Stale token filtered out
+        assert "stale@im.wechat" not in session.context_tokens
+
+        wl.close()

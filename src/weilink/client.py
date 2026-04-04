@@ -235,6 +235,7 @@ class WeiLink:
         self._message_queue: queue.Queue[Message] = queue.Queue(maxsize=1000)
         self._dispatcher_thread: threading.Thread | None = None
         self._dispatcher_stop = threading.Event()
+        self._dispatcher_lock = threading.Lock()
         self._closed = False
 
         # Cross-process file locks
@@ -1560,24 +1561,30 @@ class WeiLink:
 
     def stop(self) -> None:
         """Stop the dispatcher if running."""
-        if self._dispatcher_thread is None:
-            return
-        self._dispatcher_stop.set()
-        self._dispatcher_thread.join(timeout=45.0)
-        self._dispatcher_thread = None
+        with self._dispatcher_lock:
+            if self._dispatcher_thread is None:
+                return
+            self._dispatcher_stop.set()
+            thread = self._dispatcher_thread
+            self._dispatcher_thread = None
+        thread.join(timeout=45.0)
         self._dispatcher_stop.clear()
 
     def _start_dispatcher(self, poll_timeout: float) -> None:
         """Start the background polling thread if not already running."""
-        if self._dispatcher_thread is not None and self._dispatcher_thread.is_alive():
-            return
-        self._dispatcher_stop.clear()
-        self._dispatcher_thread = threading.Thread(
-            target=self._poll_loop,
-            args=(poll_timeout,),
-            daemon=True,
-        )
-        self._dispatcher_thread.start()
+        with self._dispatcher_lock:
+            if (
+                self._dispatcher_thread is not None
+                and self._dispatcher_thread.is_alive()
+            ):
+                return
+            self._dispatcher_stop.clear()
+            self._dispatcher_thread = threading.Thread(
+                target=self._poll_loop,
+                args=(poll_timeout,),
+                daemon=True,
+            )
+            self._dispatcher_thread.start()
 
     def _poll_loop(self, poll_timeout: float) -> None:
         """Background loop: poll iLink and dispatch to handlers + queue."""
