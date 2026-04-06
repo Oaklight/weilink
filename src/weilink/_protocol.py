@@ -73,12 +73,32 @@ def _random_uin() -> str:
     return base64.b64encode(str(val).encode()).decode()
 
 
+def _encode_client_version(version: str) -> str:
+    """Encode a version string as a uint32 in 0x00MMNNPP format.
+
+    Args:
+        version: Dot-separated version string (e.g. "1.0.2").
+
+    Returns:
+        Decimal string of the encoded uint32 (e.g. "65538").
+    """
+    parts = [int(p) for p in version.split(".")]
+    while len(parts) < 3:
+        parts.append(0)
+    return str((parts[0] << 16) | (parts[1] << 8) | parts[2])
+
+
+_CLIENT_VERSION = _encode_client_version(CHANNEL_VERSION)
+
+
 def _make_headers(token: str | None = None) -> dict[str, str]:
     """Build common iLink request headers."""
     headers: dict[str, str] = {
         "Content-Type": "application/json",
         "AuthorizationType": "ilink_bot_token",
         "X-WECHAT-UIN": _random_uin(),
+        "iLink-App-Id": "bot",
+        "iLink-App-ClientVersion": _CLIENT_VERSION,
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -135,7 +155,12 @@ def post(
     errcode = result.get("errcode")
 
     if errcode == SESSION_EXPIRED:
-        logger.warning("Session expired on %s (ret=%s)", endpoint, ret)
+        logger.warning(
+            "Session expired on %s (ret=%s, full_resp=%s)",
+            endpoint,
+            ret,
+            str(result)[:500],
+        )
         raise SessionExpiredError(
             ret=ret, errcode=errcode, errmsg=result.get("errmsg", "session expired")
         )
@@ -185,7 +210,14 @@ def get(
 
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            result: dict[str, Any] = json.loads(resp.read())
+            raw = resp.read()
+            result: dict[str, Any] = json.loads(raw)
+            logger.debug(
+                "GET %s -> HTTP %s, resp_len=%d",
+                endpoint,
+                resp.status,
+                len(raw),
+            )
     except urllib.error.URLError as e:
         raise ILinkError(ret=-1, errmsg=str(e)) from e
 
@@ -212,7 +244,6 @@ def poll_qr_status(qrcode: str, base_url: str = BASE_URL) -> dict[str, Any]:
         params={"qrcode": qrcode},
         base_url=base_url,
         timeout=40.0,
-        extra_headers={"iLink-App-ClientVersion": "1"},
     )
 
 
@@ -321,7 +352,9 @@ def get_config(
     }
     if context_token:
         body["context_token"] = context_token
-    return post(EP_GET_CONFIG, body, token, base_url, timeout=10.0)
+    result = post(EP_GET_CONFIG, body, token, base_url, timeout=10.0)
+    logger.debug("get_config response keys: %s", list(result.keys()))
+    return result
 
 
 def send_typing(

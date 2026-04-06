@@ -93,3 +93,24 @@ class TestUploadedMedia:
         assert um.filekey == "abc123"
         assert um.file_size == 100
         assert um.media_type == UploadMediaType.IMAGE
+
+
+class TestMediaInfoFullUrl:
+    """Tests for MediaInfo.full_url field."""
+
+    def test_default_empty(self) -> None:
+        from weilink.models import MediaInfo
+
+        mi = MediaInfo()
+        assert mi.full_url == ""
+
+    def test_with_full_url(self) -> None:
+        from weilink.models import MediaInfo
+
+        mi = MediaInfo(
+            encrypt_query_param="param",
+            aes_key="0" * 32,
+            full_url="https://cdn.example.com/download?id=123",
+        )
+        assert mi.full_url == "https://cdn.example.com/download?id=123"
+        assert mi.encrypt_query_param == "param"
