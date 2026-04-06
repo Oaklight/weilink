@@ -99,6 +99,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self._handle_start_login(body)
         elif path == "/api/set-default":
             self._handle_set_default(body)
+        elif path == "/api/send":
+            self._handle_send(body)
         elif path.endswith("/logout"):
             name = path[len("/api/sessions/") : -len("/logout")]
             self._handle_logout(urllib.parse.unquote(name))
@@ -351,6 +353,49 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             )
         except ValueError as e:
             self._send_error(404, str(e))
+
+    def _handle_send(self, body: bytes) -> None:
+        """Send a message to a user (text and/or media via base64)."""
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            self._send_error(400, "Invalid JSON body")
+            return
+
+        to_user = data.get("to", "").strip() if isinstance(data.get("to"), str) else ""
+        if not to_user:
+            self._send_error(400, "'to' (user ID) is required")
+            return
+
+        kwargs: dict[str, Any] = {}
+        if data.get("text"):
+            kwargs["text"] = data["text"]
+        for media_key in ("image", "voice", "file", "video"):
+            raw = data.get(media_key)
+            if raw:
+                try:
+                    kwargs[media_key] = base64.b64decode(raw)
+                except Exception:
+                    self._send_error(400, f"Invalid base64 for '{media_key}'")
+                    return
+        if data.get("file_name"):
+            kwargs["file_name"] = data["file_name"]
+
+        if not kwargs:
+            self._send_error(400, "At least 'text' or a media field is required")
+            return
+
+        try:
+            with self._lock:
+                result = self.weilink.send(to_user, **kwargs)
+            self._send_json(
+                {
+                    "success": result.success,
+                    "remaining": result.remaining,
+                }
+            )
+        except Exception as e:
+            self._send_error(400, str(e))
 
     def _handle_get_messages(self, query: dict[str, list[str]]) -> None:
         """Return paginated message history as JSON."""

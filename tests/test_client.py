@@ -2001,3 +2001,17 @@ class TestMultiConsumerCorrectness:
         assert "stale@im.wechat" not in session.context_tokens
 
         wl.close()
+
+    def test_fallback_window_configurable(self, tmp_path: Path):
+        """Custom fallback_window is respected by _recv_from_store."""
+        self._setup_base(tmp_path)
+
+        wl_default = WeiLink(base_path=tmp_path, message_store=True)
+        assert wl_default._fallback_window == 60.0
+        wl_default.close()
+
+        wl_custom = WeiLink(
+            base_path=tmp_path, message_store=True, fallback_window=300.0
+        )
+        assert wl_custom._fallback_window == 300.0
+        wl_custom.close()

@@ -85,5 +85,11 @@
     "sender_bot": "\u673a\u5668\u4eba",
     "download_failed": "\u4e0b\u8f7d\u5931\u8d25",
     "download": "\u4e0b\u8f7d"
+  },
+  "send": {
+    "placeholder": "\u8f93\u5165\u6d88\u606f...",
+    "send": "\u53d1\u9001",
+    "success": "\u6d88\u606f\u5df2\u53d1\u9001",
+    "failed": "\u53d1\u9001\u5931\u8d25"
   }
 }
