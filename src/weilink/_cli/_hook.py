@@ -108,28 +108,34 @@ def hook_poll(
             pass
         return {"has_messages": False, "count": 0, "context": ""}
 
-    last_ts = _load_last_ts(state_file)
-    if last_ts == 0:
-        last_ts = int((time.time() - _DEFAULT_LOOKBACK_S) * 1000)
+    from weilink._vendor.filelock import FileLock
 
-    now_ms = int(time.time() * 1000)
+    # Serialize concurrent hook-poll invocations (e.g. multiple IDE
+    # instances) so each one sees a consistent last_ts.
+    hook_lock = FileLock(base_path / ".hook.lock")
+    with hook_lock:
+        last_ts = _load_last_ts(state_file)
+        if last_ts == 0:
+            last_ts = int((time.time() - _DEFAULT_LOOKBACK_S) * 1000)
 
-    # Read directly from SQLite store — fast, no network.
-    wl = WeiLink(base_path=base_path, message_store=True)
-    store = wl._message_store
-    if store is None:
-        wl.close()
+        now_ms = int(time.time() * 1000)
+
+        # Read directly from SQLite store — fast, no network.
+        wl = WeiLink(base_path=base_path, message_store=True)
+        store = wl._message_store
+        if store is None:
+            wl.close()
+            _save_last_ts(state_file, now_ms)
+            return {"has_messages": False, "count": 0, "context": ""}
+
+        try:
+            messages = store.query(direction=1, since_ms=last_ts, limit=limit)
+        except Exception:
+            messages = []
+        finally:
+            wl.close()
+
         _save_last_ts(state_file, now_ms)
-        return {"has_messages": False, "count": 0, "context": ""}
-
-    try:
-        messages = store.query(direction=1, since_ms=last_ts, limit=limit)
-    except Exception:
-        messages = []
-    finally:
-        wl.close()
-
-    _save_last_ts(state_file, now_ms)
 
     if not messages:
         return {"has_messages": False, "count": 0, "context": ""}

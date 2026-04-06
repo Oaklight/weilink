@@ -85,5 +85,11 @@
     "sender_bot": "Bot",
     "download_failed": "Download failed",
     "download": "Download"
+  },
+  "send": {
+    "placeholder": "Type a message...",
+    "send": "Send",
+    "success": "Message sent",
+    "failed": "Send failed"
   }
 }

@@ -197,6 +197,7 @@ class WeiLink:
         *,
         base_path: str | Path | None = None,
         message_store: bool | str | Path | None = None,
+        fallback_window: float = _FALLBACK_WINDOW,
     ):
         """Initialize the WeiLink client.
 
@@ -211,6 +212,9 @@ class WeiLink:
                 ``None`` (default) disables it.  ``True`` uses
                 ``<base_path>/messages.db``.  A path string or
                 ``Path`` specifies a custom database location.
+            fallback_window: Time window in seconds for Route C
+                degraded SQLite reads when the poll lock is held by
+                another process.  Defaults to 60.
         """
         if token_path is not None:
             self._base_path = Path(token_path).parent
@@ -218,6 +222,7 @@ class WeiLink:
             self._base_path = Path(base_path)
         else:
             self._base_path = _DEFAULT_BASE_PATH
+        self._fallback_window = fallback_window
 
         # Auto-migrate legacy flat default layout into default/ subdir.
         if token_path is None:
@@ -980,7 +985,7 @@ class WeiLink:
         assert session.bot_info is not None
         assert self._message_store is not None
 
-        since_ms = int((time.time() - _FALLBACK_WINDOW) * 1000)
+        since_ms = int((time.time() - self._fallback_window) * 1000)
         messages = self._message_store.query_messages(
             bot_id=session.bot_info.bot_id,
             direction=1,

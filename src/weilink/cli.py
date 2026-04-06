@@ -7,7 +7,8 @@ Provides subcommands for bot interaction and server management::
     weilink recv --timeout 5
     weilink send USER_ID --text "hello"
     weilink admin --host 0.0.0.0 -p 8080
-    weilink mcp -t sse -p 8000 --admin-port 8080 -d /data/weilink
+    weilink mcp -t sse -p 8000 -d /data/weilink
+    weilink mcp --no-admin -t stdio
     weilink openapi -p 8000
 """
 
@@ -480,8 +481,8 @@ def _run_mcp(args: argparse.Namespace) -> None:
 
     base_path = Path(args.base_path) if args.base_path else None
 
-    # Optionally start admin panel in the same process.
-    if args.admin_port is not None:
+    # Start admin panel unless explicitly disabled.
+    if not args.no_admin:
         from weilink.server.app import _init_client
 
         _init_client(base_path)
@@ -630,8 +631,8 @@ def _run_openapi(args: argparse.Namespace) -> None:
 
     base_path = Path(args.base_path) if args.base_path else None
 
-    # Optionally start admin panel in the same process.
-    if args.admin_port is not None:
+    # Start admin panel unless explicitly disabled.
+    if not args.no_admin:
         from weilink.server.app import _init_client
 
         _init_client(base_path)
@@ -939,8 +940,14 @@ def main(argv: list[str] | None = None) -> None:
     openapi_parser.add_argument(
         "--admin-port",
         type=int,
-        default=None,
-        help="also start admin panel on this port (same host)",
+        default=8080,
+        help="admin panel port (default: 8080)",
+    )
+    openapi_parser.add_argument(
+        "--no-admin",
+        action="store_true",
+        default=False,
+        help="disable the admin panel",
     )
     openapi_parser.add_argument(
         "--log-level",
@@ -1092,8 +1099,14 @@ def main(argv: list[str] | None = None) -> None:
     mcp_parser.add_argument(
         "--admin-port",
         type=int,
-        default=None,
-        help="also start admin panel on this port (same host)",
+        default=8080,
+        help="admin panel port (default: 8080)",
+    )
+    mcp_parser.add_argument(
+        "--no-admin",
+        action="store_true",
+        default=False,
+        help="disable the admin panel",
     )
     mcp_parser.add_argument(
         "--log-level",

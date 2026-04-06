@@ -487,6 +487,73 @@ tr:hover td { background: var(--bg-hover); }
   text-align: center;
   flex-shrink: 0;
 }
+.send-area {
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  flex-shrink: 0;
+}
+.send-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.send-row textarea {
+  flex: 1;
+  resize: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  max-height: 80px;
+  min-height: 36px;
+  outline: none;
+  font-family: inherit;
+}
+.send-row textarea:focus { border-color: var(--accent); }
+.send-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.btn-attach {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.btn-attach:hover { border-color: var(--accent); color: var(--accent); }
+.btn-send {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-send:hover { opacity: 0.9; }
+.btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.send-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.send-attachment .remove {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.send-attachment .remove:hover { color: #e53e3e; }
 
 /* Chat bubbles */
 #msgBubbles {
@@ -752,6 +819,16 @@ tr:hover td { background: var(--bg-hover); }
       <div id="msgBubbles"></div>
       <div class="bubble-empty" id="msgEmpty" style="display:none" data-i18n="messages.no_messages">No messages found</div>
     </div>
+    <div class="send-area" id="msgSendArea">
+      <div id="msgAttachmentPreview"></div>
+      <div class="send-row">
+        <button class="btn-attach" onclick="document.getElementById('msgFileInput').click()" title="Attach file">&#x1F4CE;</button>
+        <textarea id="msgSendInput" rows="1" data-i18n-placeholder="send.placeholder" placeholder="Type a message..."
+                  onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFromDrawer()}"></textarea>
+        <button class="btn-send" id="msgSendBtn" onclick="sendFromDrawer()" data-i18n="send.send">Send</button>
+      </div>
+      <input type="file" id="msgFileInput" style="display:none" onchange="handleFileAttach(this)" accept="image/*,audio/*,video/*,*/*">
+    </div>
     <div class="drawer-footer" id="msgDrawerFooter"></div>
   </div>
 </div>
@@ -894,6 +971,13 @@ class WeiLinkAPI {
       if (v !== undefined && v !== null && v !== '') qs.set(k, v);
     }
     return this.request(`/api/messages?${qs}`);
+  }
+
+  async sendMessage(payload) {
+    return this.request('/api/send', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 }
 
@@ -1454,6 +1538,77 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Auto-refresh every 30s
   refreshTimer = setInterval(refreshAll, 30000);
 });
+
+// ============================================================
+// Send message
+// ============================================================
+let _pendingFile = null; // { name, type, data (base64 string) }
+
+function handleFileAttach(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    // result is "data:<mime>;base64,<data>" — extract the base64 part
+    const b64 = reader.result.split(',')[1];
+    _pendingFile = { name: file.name, type: file.type, data: b64 };
+    const preview = document.getElementById('msgAttachmentPreview');
+    preview.innerHTML = `<div class="send-attachment"><span>${escapeHtml(file.name)}</span><span class="remove" onclick="clearAttachment()">&times;</span></div>`;
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function clearAttachment() {
+  _pendingFile = null;
+  document.getElementById('msgAttachmentPreview').innerHTML = '';
+}
+
+async function sendFromDrawer() {
+  const input = document.getElementById('msgSendInput');
+  const text = input.value.trim();
+  if (!text && !_pendingFile) return;
+  if (!_msgState.userId) return;
+
+  const btn = document.getElementById('msgSendBtn');
+  btn.disabled = true;
+
+  const payload = { to: _msgState.userId };
+  if (text) payload.text = text;
+  if (_pendingFile) {
+    // Determine media type from MIME
+    const mime = _pendingFile.type || '';
+    if (mime.startsWith('image/')) {
+      payload.image = _pendingFile.data;
+    } else if (mime.startsWith('audio/')) {
+      payload.voice = _pendingFile.data;
+    } else if (mime.startsWith('video/')) {
+      payload.video = _pendingFile.data;
+    } else {
+      payload.file = _pendingFile.data;
+      payload.file_name = _pendingFile.name;
+    }
+  }
+
+  try {
+    const resp = await api.sendMessage(payload);
+    if (resp.error) {
+      showToast(resp.error, 'error');
+    } else if (resp.success) {
+      input.value = '';
+      clearAttachment();
+      showToast(i18n.t('send.success'), 'success');
+      // Reload messages to show the sent message
+      setTimeout(() => reloadMessages(), 500);
+    } else {
+      showToast(i18n.t('send.failed'), 'error');
+    }
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // Close modals/drawer on Escape
 document.addEventListener('keydown', e => {

@@ -446,3 +446,74 @@ class TestAdminMessagesDisabled:
             pytest.fail("Expected HTTPError")
         except urllib.error.HTTPError as e:
             assert e.code == 400
+
+
+class TestAdminSend:
+    """Tests for POST /api/send endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def _start_server(self, wl):
+        self.info = wl.start_admin(port=0)
+        self.wl = wl
+        self.base = self.info.url
+        yield
+        wl.stop_admin()
+
+    def _post(self, path, data=None):
+        body = json.dumps(data or {}).encode()
+        req = urllib.request.Request(
+            self.base + path,
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+
+    def test_send_missing_to(self):
+        """POST /api/send without 'to' returns 400."""
+        try:
+            self._post("/api/send", {"text": "hello"})
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "to" in body["error"].lower()
+
+    def test_send_empty_body(self):
+        """POST /api/send with empty body returns 400."""
+        try:
+            self._post("/api/send", {})
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+
+    def test_send_no_content(self):
+        """POST /api/send with 'to' but no text/media returns 400."""
+        try:
+            self._post("/api/send", {"to": "user@im.wechat"})
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "text" in body["error"].lower() or "media" in body["error"].lower()
+
+    def test_send_invalid_base64(self):
+        """POST /api/send with invalid base64 for media returns 400."""
+        try:
+            self._post(
+                "/api/send", {"to": "user@im.wechat", "image": "not-valid-b64!!!"}
+            )
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
+            body = json.loads(e.read())
+            assert "base64" in body["error"].lower()
+
+    def test_send_not_logged_in(self):
+        """POST /api/send when not logged in returns error."""
+        try:
+            self._post("/api/send", {"to": "user@im.wechat", "text": "hello"})
+            pytest.fail("Expected HTTPError")
+        except urllib.error.HTTPError as e:
+            assert e.code == 400
