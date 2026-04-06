@@ -10,6 +10,8 @@ from weilink._protocol import (
     EP_QR_CODE,
     EP_SEND_MESSAGE,
     SESSION_EXPIRED,
+    _CLIENT_VERSION,
+    _encode_client_version,
     _make_headers,
     _random_uin,
 )
@@ -41,6 +43,29 @@ class TestMakeHeaders:
         headers = _make_headers(token="my_token")
         assert headers["Authorization"] == "Bearer my_token"
         assert headers["Content-Type"] == "application/json"
+
+    def test_ilink_app_id(self):
+        headers = _make_headers()
+        assert headers["iLink-App-Id"] == "bot"
+
+    def test_ilink_app_client_version(self):
+        headers = _make_headers()
+        assert headers["iLink-App-ClientVersion"] == _CLIENT_VERSION
+        # 1.0.2 → 0x00010002 = 65538
+        assert headers["iLink-App-ClientVersion"] == "65538"
+
+
+class TestEncodeClientVersion:
+    def test_1_0_2(self):
+        assert _encode_client_version("1.0.2") == "65538"
+
+    def test_2_1_6(self):
+        # 0x00020106 = 131334
+        assert _encode_client_version("2.1.6") == "131334"
+
+    def test_short_version(self):
+        # "1.0" → 0x00010000 = 65536
+        assert _encode_client_version("1.0") == "65536"
 
 
 class TestConstants:

@@ -58,12 +58,17 @@ def _decode_aes_key(aes_key: str) -> bytes:
     return base64.b64decode(aes_key)
 
 
-def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
+def download_media(
+    encrypt_query_param: str,
+    aes_key: str,
+    full_url: str = "",
+) -> bytes:
     """Download and decrypt a media file from CDN.
 
     Args:
         encrypt_query_param: CDN download query parameter.
         aes_key: AES key string (hex or base64).
+        full_url: Direct CDN URL (when provided, bypasses URL construction).
 
     Returns:
         Decrypted file bytes.
@@ -73,7 +78,11 @@ def download_media(encrypt_query_param: str, aes_key: str) -> bytes:
     """
     key = _decode_aes_key(aes_key)
 
-    url = f"{CDN_BASE}/download?encrypted_query_param={urllib.parse.quote(encrypt_query_param, safe=_URI_SAFE)}"
+    if full_url:
+        url = full_url
+        logger.debug("CDN download using full_url: %s", url)
+    else:
+        url = f"{CDN_BASE}/download?encrypted_query_param={urllib.parse.quote(encrypt_query_param, safe=_URI_SAFE)}"
     req = urllib.request.Request(url, method="GET")
 
     with urllib.request.urlopen(req, timeout=60) as resp:
@@ -131,17 +140,25 @@ def upload_media(
     )
     logger.debug("getuploadurl response: %s", url_resp)
     upload_param = url_resp.get("upload_param", "")
-    if not upload_param:
-        raise RuntimeError(f"No upload_param in response: {url_resp}")
+    upload_full_url = url_resp.get("upload_full_url", "")
+    if upload_full_url:
+        logger.info("Server returned upload_full_url, using direct URL")
+    if not upload_param and not upload_full_url:
+        raise RuntimeError(
+            f"No upload_param or upload_full_url in response: {url_resp}"
+        )
 
     # Encrypt and upload to CDN
     encrypted = aes_ecb_encrypt(file_data, aes_key)
 
-    upload_url = (
-        f"{CDN_BASE}/upload"
-        f"?encrypted_query_param={urllib.parse.quote(upload_param, safe=_URI_SAFE)}"
-        f"&filekey={urllib.parse.quote(filekey, safe=_URI_SAFE)}"
-    )
+    if upload_full_url:
+        upload_url = upload_full_url
+    else:
+        upload_url = (
+            f"{CDN_BASE}/upload"
+            f"?encrypted_query_param={urllib.parse.quote(upload_param, safe=_URI_SAFE)}"
+            f"&filekey={urllib.parse.quote(filekey, safe=_URI_SAFE)}"
+        )
     logger.debug("CDN upload: url=%s ciphertext=%d bytes", upload_url, len(encrypted))
     req = urllib.request.Request(
         upload_url,

@@ -107,11 +107,14 @@ class MediaInfo:
         encrypt_query_param: CDN download query parameter.
         aes_key: AES-128-ECB key (hex or base64 encoded).
         encrypt_type: Encryption type identifier (typically 1).
+        full_url: Direct CDN URL (when provided by server, bypasses
+            URL construction from encrypt_query_param).
     """
 
     encrypt_query_param: str = ""
     aes_key: str = ""
     encrypt_type: int = 0
+    full_url: str = ""
 
 
 @dataclass(frozen=True)

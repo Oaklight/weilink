@@ -833,8 +833,12 @@ class WeiLink:
                 continue
 
             status = status_resp.get("status", "")
+            logger.debug("QR poll status=%s, keys=%s", status, list(status_resp.keys()))
 
             if status == "confirmed":
+                logger.debug(
+                    "QR confirmed, response keys: %s", list(status_resp.keys())
+                )
                 bot_token = status_resp.get("bot_token", "")
                 base_url = status_resp.get("baseurl", proto.BASE_URL)
                 bot_id = status_resp.get("ilink_bot_id", "")
@@ -867,6 +871,12 @@ class WeiLink:
 
             # "wait" = server says no scan yet; any other unknown status
             # is treated the same — keep polling.
+            if status not in ("wait", ""):
+                logger.info(
+                    "QR poll unknown status=%r, full_resp=%s",
+                    status,
+                    str(status_resp)[:500],
+                )
             print(".", end="", flush=True)
 
         raise proto.ILinkError(ret=-1, errmsg="QR code login timed out (5 min)")
@@ -1414,12 +1424,14 @@ class WeiLink:
         from weilink._cdn import download_media
 
         media = self._get_media_info(msg)
-        if not media or not media.encrypt_query_param:
+        if not media or (not media.encrypt_query_param and not media.full_url):
             raise ValueError(
                 f"Message has no downloadable media (type={msg.msg_type.name})"
             )
 
-        return download_media(media.encrypt_query_param, media.aes_key)
+        return download_media(
+            media.encrypt_query_param, media.aes_key, full_url=media.full_url
+        )
 
     def upload(
         self,
@@ -1596,8 +1608,14 @@ class WeiLink:
         while not self._dispatcher_stop.is_set():
             try:
                 messages = self._recv_direct(timeout=poll_timeout)
-            except proto.SessionExpiredError:
-                logger.error("Session expired, dispatcher stopping")
+            except proto.SessionExpiredError as e:
+                logger.error(
+                    "Session expired, dispatcher stopping "
+                    "(ret=%s, errcode=%s, errmsg=%s)",
+                    e.ret,
+                    e.errcode,
+                    e.errmsg,
+                )
                 break
             except RuntimeError:
                 # Not logged in yet — wait briefly and retry
@@ -1766,10 +1784,16 @@ class WeiLink:
     @staticmethod
     def _parse_media_info(raw: dict[str, Any]) -> MediaInfo:
         """Parse a CDN media reference from a raw dict."""
+        full_url = raw.get("full_url", "")
+        if full_url:
+            logger.info(
+                "Media has full_url from server (bypasses CDN URL construction)"
+            )
         return MediaInfo(
             encrypt_query_param=raw.get("encrypt_query_param", ""),
             aes_key=raw.get("aes_key", ""),
             encrypt_type=raw.get("encrypt_type", 0),
+            full_url=full_url,
         )
 
     @classmethod
