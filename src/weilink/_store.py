@@ -684,8 +684,11 @@ class MessageStore:
             )
             deleted += cur.rowcount
 
+        # Always commit to release any implicit transaction started by DELETE,
+        # even when zero rows were deleted.  Without this, Python's sqlite3
+        # module leaves an open write transaction that blocks other connections.
+        self._conn.commit()
         if deleted:
-            self._conn.commit()
             logger.debug("Pruned %d old message(s)", deleted)
 
         return deleted
