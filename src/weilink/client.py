@@ -43,6 +43,7 @@ _DEFAULT_BASE_PATH = Path.home() / ".weilink"
 _DEFAULT_SESSION = "default"
 _FALLBACK_WINDOW = 60  # seconds: time window for Route C degraded SQLite reads
 _DEFAULT_QUEUE_MAXSIZE = 1000
+_STORE_WATCH_INTERVAL = 2.0  # seconds: polling interval for store watcher fallback
 
 
 def _atomic_write(path: Path, data: str) -> None:
@@ -1579,20 +1580,72 @@ class WeiLink:
         self._dispatcher_stop.clear()
 
     def _start_dispatcher(self, poll_timeout: float) -> None:
-        """Start the background polling thread if not already running."""
+        """Start the background polling thread if not already running.
+
+        When the poll lock is available, starts the normal ``_poll_loop``
+        that long-polls the iLink API.  When another process already
+        holds the lock (e.g. an MCP server), falls back to
+        ``_store_watch_loop`` which watches SQLite for new messages.
+        """
         with self._dispatcher_lock:
             if (
                 self._dispatcher_thread is not None
                 and self._dispatcher_thread.is_alive()
             ):
                 return
+
+            # Decide between poll loop and store watcher.
+            if self._poll_lock.try_lock():
+                self._poll_lock.unlock()
+                target = self._poll_loop
+                args: tuple[float] = (poll_timeout,)
+            elif self._message_store is not None:
+                logger.info(
+                    "Poll lock held by another process, starting store watcher fallback"
+                )
+                target = self._store_watch_loop
+                args = (_STORE_WATCH_INTERVAL,)
+            else:
+                raise RuntimeError(
+                    "Cannot start dispatcher: poll lock is held by another "
+                    "process and message_store is not enabled. Enable "
+                    "message_store to use the store watcher fallback."
+                )
+
             self._dispatcher_stop.clear()
             self._dispatcher_thread = threading.Thread(
-                target=self._poll_loop,
-                args=(poll_timeout,),
+                target=target,
+                args=args,
                 daemon=True,
             )
             self._dispatcher_thread.start()
+
+    def _dispatch_messages(self, messages: list[Message]) -> None:
+        """Dispatch messages to handlers and enqueue for recv() consumers."""
+        for msg in messages:
+            for handler in self._message_handlers:
+                try:
+                    handler(msg)
+                except Exception:
+                    logger.exception(
+                        "Handler %s raised an exception",
+                        getattr(handler, "__name__", handler),
+                    )
+
+            # Enqueue for recv() consumers, drop oldest on overflow
+            try:
+                self._message_queue.put_nowait(msg)
+            except queue.Full:
+                try:
+                    dropped = self._message_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                else:
+                    logger.warning(
+                        "Dispatcher queue full, dropped oldest message %s",
+                        dropped.message_id,
+                    )
+                self._message_queue.put_nowait(msg)
 
     def _poll_loop(self, poll_timeout: float) -> None:
         """Background loop: poll iLink and dispatch to handlers + queue."""
@@ -1617,31 +1670,32 @@ class WeiLink:
                 logger.exception("Polling error in dispatcher")
                 continue
 
-            for msg in messages:
-                # Dispatch to handlers
-                for handler in self._message_handlers:
-                    try:
-                        handler(msg)
-                    except Exception:
-                        logger.exception(
-                            "Handler %s raised an exception",
-                            getattr(handler, "__name__", handler),
-                        )
+            self._dispatch_messages(messages)
 
-                # Enqueue for recv() consumers, drop oldest on overflow
-                try:
-                    self._message_queue.put_nowait(msg)
-                except queue.Full:
-                    try:
-                        dropped = self._message_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                    else:
-                        logger.warning(
-                            "Dispatcher queue full, dropped oldest message %s",
-                            dropped.message_id,
-                        )
-                    self._message_queue.put_nowait(msg)
+        self._dispatcher_stop.set()
+
+    def _store_watch_loop(self, interval: float) -> None:
+        """Watch SQLite for new messages when poll lock is unavailable.
+
+        This is the store-watcher fallback: instead of polling the iLink
+        API directly, periodically query the message store for rows
+        inserted by the primary poller (e.g. an MCP server).
+        """
+        assert self._message_store is not None
+        hwm = self._message_store.max_rowid()
+        logger.debug("Store watcher started, high-water mark = %d", hwm)
+
+        while not self._dispatcher_stop.wait(timeout=interval):
+            messages, new_hwm = self._message_store.query_since_rowid(hwm)
+            if messages:
+                logger.debug(
+                    "Store watcher: %d new message(s), hwm %d -> %d",
+                    len(messages),
+                    hwm,
+                    new_hwm,
+                )
+                self._dispatch_messages(messages)
+            hwm = new_hwm
 
         self._dispatcher_stop.set()
 
