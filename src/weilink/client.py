@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BASE_PATH = Path.home() / ".weilink"
 _DEFAULT_SESSION = "default"
 _FALLBACK_WINDOW = 60  # seconds: time window for Route C degraded SQLite reads
+_DEFAULT_QUEUE_MAXSIZE = 1000
 
 
 def _atomic_write(path: Path, data: str) -> None:
@@ -198,6 +199,7 @@ class WeiLink:
         base_path: str | Path | None = None,
         message_store: bool | str | Path | None = None,
         fallback_window: float = _FALLBACK_WINDOW,
+        queue_maxsize: int = _DEFAULT_QUEUE_MAXSIZE,
     ):
         """Initialize the WeiLink client.
 
@@ -215,6 +217,9 @@ class WeiLink:
             fallback_window: Time window in seconds for Route C
                 degraded SQLite reads when the poll lock is held by
                 another process.  Defaults to 60.
+            queue_maxsize: Maximum number of messages buffered in the
+                dispatcher queue.  When full, the oldest message is
+                dropped.  Defaults to 1000.
         """
         if token_path is not None:
             self._base_path = Path(token_path).parent
@@ -237,7 +242,7 @@ class WeiLink:
         self._sessions: dict[str, _Session] = {}
         self._admin_server: Any = None
         self._message_handlers: list[Callable[[Message], None]] = []
-        self._message_queue: queue.Queue[Message] = queue.Queue(maxsize=1000)
+        self._message_queue: queue.Queue[Message] = queue.Queue(maxsize=queue_maxsize)
         self._dispatcher_thread: threading.Thread | None = None
         self._dispatcher_stop = threading.Event()
         self._dispatcher_lock = threading.Lock()
@@ -1642,9 +1647,14 @@ class WeiLink:
                     self._message_queue.put_nowait(msg)
                 except queue.Full:
                     try:
-                        self._message_queue.get_nowait()
+                        dropped = self._message_queue.get_nowait()
                     except queue.Empty:
                         pass
+                    else:
+                        logger.warning(
+                            "Dispatcher queue full, dropped oldest message %s",
+                            dropped.msg_id,
+                        )
                     self._message_queue.put_nowait(msg)
 
         self._dispatcher_stop.set()
