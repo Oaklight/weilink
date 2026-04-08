@@ -70,6 +70,7 @@ def _serialize_media_info(mi: MediaInfo) -> dict[str, Any]:
         "encrypt_query_param": mi.encrypt_query_param,
         "aes_key": mi.aes_key,
         "encrypt_type": mi.encrypt_type,
+        "full_url": mi.full_url,
     }
 
 
@@ -79,6 +80,7 @@ def _deserialize_media_info(d: dict[str, Any]) -> MediaInfo:
         encrypt_query_param=d.get("encrypt_query_param", ""),
         aes_key=d.get("aes_key", ""),
         encrypt_type=d.get("encrypt_type", 0),
+        full_url=d.get("full_url", ""),
     )
 
 

@@ -69,6 +69,7 @@ def _make_image_msg(message_id: int = 200) -> Message:
                 encrypt_query_param="param=abc",
                 aes_key="deadbeef",
                 encrypt_type=1,
+                full_url="https://novac2c.cdn.weixin.qq.com/c2c/download?param=abc&taskid=t1",
             ),
             url="https://cdn.example.com/img.jpg",
             thumb_width=100,
@@ -426,3 +427,99 @@ class TestQueryMessages:
         assert len(results) == 1
         assert results[0].image is not None
         assert results[0].image.media.aes_key == "deadbeef"
+
+
+# ------------------------------------------------------------------
+# full_url persistence tests
+# ------------------------------------------------------------------
+
+
+class TestFullUrlPersistence:
+    """Verify that MediaInfo.full_url survives serialization roundtrip."""
+
+    def test_image_full_url_roundtrip(self):
+        msg = _make_image_msg()
+        restored = deserialize_message(serialize_message(msg))
+        assert restored.image is not None
+        assert msg.image is not None
+        assert restored.image.media.full_url == msg.image.media.full_url
+        assert "taskid=" in restored.image.media.full_url
+
+    def test_voice_full_url_roundtrip(self):
+        msg = Message(
+            from_user="user1@im.wechat",
+            msg_type=MessageType.VOICE,
+            voice=VoiceInfo(
+                media=MediaInfo(
+                    aes_key="voicekey",
+                    full_url="https://cdn.example.com/voice?taskid=v1",
+                ),
+                playtime=3000,
+            ),
+            timestamp=1700000002000,
+            message_id=301,
+            bot_id="bot1@im.bot",
+        )
+        restored = deserialize_message(serialize_message(msg))
+        assert restored.voice is not None
+        assert (
+            restored.voice.media.full_url == "https://cdn.example.com/voice?taskid=v1"
+        )
+
+    def test_file_full_url_roundtrip(self):
+        msg = Message(
+            from_user="user1@im.wechat",
+            msg_type=MessageType.FILE,
+            file=FileInfo(
+                media=MediaInfo(
+                    aes_key="filekey",
+                    full_url="https://cdn.example.com/file?taskid=f1",
+                ),
+                file_name="doc.pdf",
+                file_size="12345",
+            ),
+            timestamp=1700000003000,
+            message_id=401,
+            bot_id="bot1@im.bot",
+        )
+        restored = deserialize_message(serialize_message(msg))
+        assert restored.file is not None
+        assert restored.file.media.full_url == "https://cdn.example.com/file?taskid=f1"
+
+    def test_video_full_url_roundtrip(self):
+        msg = Message(
+            from_user="user2@im.wechat",
+            msg_type=MessageType.VIDEO,
+            video=VideoInfo(
+                media=MediaInfo(
+                    aes_key="videokey",
+                    full_url="https://cdn.example.com/video?taskid=vid1",
+                ),
+                play_length=60,
+            ),
+            timestamp=1700000004000,
+            message_id=501,
+            bot_id="bot1@im.bot",
+        )
+        restored = deserialize_message(serialize_message(msg))
+        assert restored.video is not None
+        assert (
+            restored.video.media.full_url == "https://cdn.example.com/video?taskid=vid1"
+        )
+
+    def test_store_roundtrip_preserves_full_url(self, store: MessageStore):
+        msg = _make_image_msg(message_id=10)
+        store.store([msg])
+        result = store.get_by_id(10)
+        assert result is not None
+        assert result.image is not None
+        assert result.image.media.full_url == msg.image.media.full_url
+
+    def test_legacy_data_without_full_url(self):
+        """Old stored messages lacking full_url should deserialize with empty string."""
+        from weilink._store import _deserialize_media_info
+
+        legacy = {"encrypt_query_param": "old_param", "aes_key": "old_key"}
+        mi = _deserialize_media_info(legacy)
+        assert mi.full_url == ""
+        assert mi.encrypt_query_param == "old_param"
