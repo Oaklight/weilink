@@ -234,6 +234,36 @@ flowchart TD
 
 **激活条件：** 同时满足两个条件时自动启用：轮询锁被其他进程持有，且 `message_store` 已启用（`message_store=True`）。
 
+### Store Watcher 调度器降级
+
+上述协作式轮询降级适用于 `recv()` 调用。对于**调度器**（`on_message` 处理器 + `run_background()`），存在类似的降级机制。
+
+当调用 `run_background()` 时如果轮询锁被其他进程持有，调度器将启动 **store watcher 循环**替代正常的轮询循环。Store watcher 定期查询 SQLite 消息存储中的新行（基于自增 `id`），将消息分发给注册的 `on_message` 处理器，并入队供 `recv()` 使用。
+
+```mermaid
+flowchart TD
+    A["run_background()"] --> B{"try_lock<br/>poll_lock"}
+    B -->|获取成功| C["启动 _poll_loop<br/>（直接轮询 iLink API）"]
+    B -->|"获取失败"| D{"已启用<br/>message_store？"}
+    D -->|是| E["启动 _store_watch_loop<br/>（每 2 秒轮询 SQLite）"]
+    D -->|否| F["抛出 RuntimeError"]
+    E --> G["query_since_rowid(hwm)"]
+    G --> H["分发给 on_message 处理器"]
+    H --> I["入队供 recv() 使用"]
+    I --> G
+```
+
+**典型多进程场景：**
+
+| 进程 | 角色 | 调度器模式 |
+|------|------|-----------|
+| MCP 服务器（`weilink mcp`） | 主轮询者 | `_poll_loop` — 轮询 iLink API，消息存入 SQLite |
+| 带 `on_message` 的 SDK 脚本 | 次级消费者 | `_store_watch_loop` — 从 SQLite 读取新消息 |
+
+两个进程共享同一数据目录（`~/.weilink/`）和 SQLite 数据库。SDK 脚本的 `on_message` 处理器会为每条新消息触发，延迟约 2 秒。
+
+**高水位标记：** Store watcher 跟踪已处理的最大 `rowid`。启动时初始化为存储中当前的 `max(id)`，因此已有消息不会被分发 — 仅分发 `run_background()` 调用之后到达的新消息。
+
 ## 消息持久化（SQLite 存储）
 
 WeiLink 包含一个可选的 SQLite 消息存储后端，记录所有收发消息的完整序列化数据（保留 CDN 引用以便后续媒体下载）。
@@ -263,12 +293,13 @@ flowchart LR
 
 ### 多客户端协调总结
 
-WeiLink 通过四种机制支持多个进程共享同一数据目录：
+WeiLink 通过五种机制支持多个进程共享同一数据目录：
 
 1. **轮询锁**（`.poll.lock`）：确保同一时间只有一个进程轮询 iLink，防止 cursor 分叉。
 2. **数据锁**（`.data.lock`）：序列化对 `token.json` 和 `contexts.json` 的读写。
-3. **SQLite 降级读取**：当轮询锁不可用且 SQLite 持久化已启用时，次级进程从数据库读取最近的消息。
-4. **原子写入**：所有文件写入使用临时文件 + 重命名模式，防止崩溃时文件损坏。
+3. **SQLite 降级读取**（`recv()`）：当轮询锁不可用且 SQLite 持久化已启用时，`recv()` 从数据库读取最近的消息。
+4. **Store watcher 降级**（调度器）：当轮询锁不可用时，`run_background()` 监听 SQLite 新行并分发给 `on_message` 处理器。
+5. **原子写入**：所有文件写入使用临时文件 + 重命名模式，防止崩溃时文件损坏。
 
 ## 二维码登录流程
 

@@ -1,5 +1,18 @@
 # 更新日志
 
+## 未发布
+
+### 新功能
+
+- **Store watcher 调度器降级** ([#33](https://github.com/Oaklight/weilink/issues/33)) — 当其他进程（如 MCP 服务器）持有轮询锁时，`on_message` 处理器和 `run_background()` 现在自动降级为监听 SQLite 消息存储中的新消息，而非失败；支持 SDK 回调 hook 与 MCP 服务器同时运行，无需修改任何代码
+- **额外媒体元数据** — 从 iLink 响应中解析 `ImageInfo.mid_size` / `thumb_size`、`VideoInfo.thumb_media` / `video_size` / `thumb_size`
+- **调度器队列溢出保护** ([#7](https://github.com/Oaklight/weilink/issues/7)) — 有界内部队列（默认 1,000 条）溢出时丢弃最旧消息并输出警告日志；可通过 `WeiLink(queue_maxsize=N)` 配置
+- **管理面板自动刷新** — 消息抽屉打开时自动轮询新消息；空闲会话从会话列表中隐藏
+
+### 问题修复
+
+- **修复 prune 留下隐式写事务** — `MessageStore.prune()` 现在始终提交事务，防止多连接打开同一数据库时的 SQLite 锁竞争
+
 ## v0.6.0 (2026-04-01)
 
 ### 新功能
