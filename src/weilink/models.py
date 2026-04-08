@@ -126,6 +126,8 @@ class ImageInfo:
         url: Direct image URL (may be empty).
         thumb_width: Thumbnail width in pixels.
         thumb_height: Thumbnail height in pixels.
+        mid_size: Medium-quality image size in bytes.
+        thumb_size: Thumbnail image size in bytes.
         hd_size: HD image cipher size in bytes.
     """
 
@@ -133,6 +135,8 @@ class ImageInfo:
     url: str = ""
     thumb_width: int = 0
     thumb_height: int = 0
+    mid_size: int = 0
+    thumb_size: int = 0
     hd_size: int = 0
 
 
@@ -184,6 +188,9 @@ class VideoInfo:
         video_md5: Video file MD5 checksum.
         thumb_width: Thumbnail width in pixels.
         thumb_height: Thumbnail height in pixels.
+        thumb_media: CDN media reference for the video thumbnail.
+        video_size: Video file size in bytes.
+        thumb_size: Thumbnail image size in bytes.
     """
 
     media: MediaInfo = field(default_factory=MediaInfo)
@@ -191,6 +198,9 @@ class VideoInfo:
     video_md5: str = ""
     thumb_width: int = 0
     thumb_height: int = 0
+    thumb_media: MediaInfo | None = None
+    video_size: int = 0
+    thumb_size: int = 0
 
 
 @dataclass(frozen=True)
