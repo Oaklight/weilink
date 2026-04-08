@@ -234,6 +234,36 @@ No cursor or context-token updates occur during a fallback read — the messages
 
 **Activation:** automatic when both conditions are true: the poll lock is held by another process, and `message_store` is enabled (`message_store=True`).
 
+### Store Watcher Dispatcher Fallback
+
+The cooperative polling fallback above applies to `recv()` calls. A similar fallback exists for the **dispatcher** (`on_message` handlers + `run_background()`).
+
+When `run_background()` is called and the poll lock is held by another process, the dispatcher starts a **store watcher loop** instead of the normal poll loop. The store watcher periodically queries the SQLite message store for new rows (by auto-increment `id`), dispatches them to registered `on_message` handlers, and enqueues them for `recv()`.
+
+```mermaid
+flowchart TD
+    A["run_background()"] --> B{"try_lock<br/>poll_lock"}
+    B -->|acquired| C["Start _poll_loop<br/>(poll iLink API directly)"]
+    B -->|"failed"| D{"message_store<br/>enabled?"}
+    D -->|yes| E["Start _store_watch_loop<br/>(poll SQLite every 2s)"]
+    D -->|no| F["raise RuntimeError"]
+    E --> G["query_since_rowid(hwm)"]
+    G --> H["Dispatch to on_message handlers"]
+    H --> I["Enqueue for recv()"]
+    I --> G
+```
+
+**Typical multi-process scenario:**
+
+| Process | Role | Dispatcher mode |
+|---------|------|-----------------|
+| MCP server (`weilink mcp`) | Primary poller | `_poll_loop` — polls iLink API, stores messages to SQLite |
+| SDK script with `on_message` | Secondary consumer | `_store_watch_loop` — reads new messages from SQLite |
+
+Both processes share the same data directory (`~/.weilink/`) and SQLite database. The SDK script's `on_message` handlers fire for every new message, with approximately 2-second latency.
+
+**High-water mark:** The store watcher tracks the highest `rowid` it has processed. On startup, it initializes to the current `max(id)` in the store, so existing messages are not dispatched — only new messages arriving after `run_background()` is called.
+
 ## Message Persistence (SQLite Store)
 
 WeiLink includes an optional SQLite-backed message store that records all received and sent messages with full serialization (preserving CDN references for later media download).
@@ -263,12 +293,13 @@ flowchart LR
 
 ### Multi-Client Coordination Summary
 
-WeiLink supports multiple processes sharing the same data directory through four mechanisms:
+WeiLink supports multiple processes sharing the same data directory through five mechanisms:
 
 1. **Poll lock** (`.poll.lock`): ensures only one process polls iLink at a time, preventing cursor divergence.
 2. **Data lock** (`.data.lock`): serializes reads and writes to `token.json` and `contexts.json`.
-3. **SQLite fallback**: when the poll lock is unavailable and SQLite persistence is enabled, secondary processes read recent messages from the database.
-4. **Atomic writes**: all file writes use temp-file-then-rename to prevent corruption on crash.
+3. **SQLite fallback** (`recv()`): when the poll lock is unavailable and SQLite persistence is enabled, `recv()` reads recent messages from the database.
+4. **Store watcher fallback** (dispatcher): when the poll lock is unavailable, `run_background()` watches SQLite for new rows and dispatches them to `on_message` handlers.
+5. **Atomic writes**: all file writes use temp-file-then-rename to prevent corruption on crash.
 
 ## QR Code Login Flow
 

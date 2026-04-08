@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **Store watcher dispatcher fallback** ([#33](https://github.com/Oaklight/weilink/issues/33)) — when another process (e.g. MCP server) holds the poll lock, `on_message` handlers and `run_background()` now automatically fall back to watching the SQLite message store for new messages instead of failing; enables running SDK callback hooks alongside an MCP server without any code changes
+- **Additional media metadata** — `ImageInfo.mid_size` / `thumb_size`, `VideoInfo.thumb_media` / `video_size` / `thumb_size` parsed from iLink responses
+- **Dispatcher queue overflow protection** ([#7](https://github.com/Oaklight/weilink/issues/7)) — bounded internal queue (default 1,000) drops oldest message on overflow with a warning log; configurable via `WeiLink(queue_maxsize=N)`
+- **Admin panel auto-refresh** — message drawer polls for new messages while open; idle sessions hidden from the session list
+
+### Bug Fixes
+
+- **Fix prune leaving implicit write transaction** — `MessageStore.prune()` now always commits, preventing SQLite lock contention when multiple connections open the same database
+
 ## v0.6.0 (2026-04-01)
 
 ### New Features
