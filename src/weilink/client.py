@@ -1867,6 +1867,8 @@ class WeiLink:
             url=raw.get("url", ""),
             thumb_width=raw.get("thumb_width", 0),
             thumb_height=raw.get("thumb_height", 0),
+            mid_size=raw.get("mid_size", 0),
+            thumb_size=raw.get("thumb_size", 0),
             hd_size=raw.get("hd_size", 0),
         )
 
@@ -1898,12 +1900,17 @@ class WeiLink:
     def _parse_video_item(cls, raw: dict[str, Any]) -> VideoInfo:
         """Parse a video_item dict into VideoInfo."""
         media = cls._parse_media_info(raw.get("media", {}))
+        raw_thumb = raw.get("thumb_media")
+        thumb_media = cls._parse_media_info(raw_thumb) if raw_thumb else None
         return VideoInfo(
             media=media,
             play_length=raw.get("play_length", 0),
             video_md5=raw.get("video_md5", ""),
             thumb_width=raw.get("thumb_width", 0),
             thumb_height=raw.get("thumb_height", 0),
+            thumb_media=thumb_media,
+            video_size=raw.get("video_size", 0),
+            thumb_size=raw.get("thumb_size", 0),
         )
 
     @staticmethod

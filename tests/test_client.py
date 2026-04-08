@@ -154,6 +154,9 @@ class TestParseMessage:
                             "url": "https://example.com/img.jpg",
                             "thumb_width": 100,
                             "thumb_height": 200,
+                            "mid_size": 40039,
+                            "thumb_size": 12810,
+                            "hd_size": 0,
                         },
                     }
                 ],
@@ -167,6 +170,9 @@ class TestParseMessage:
             assert msg.image.media.aes_key == "abc"
             assert msg.image.url == "https://example.com/img.jpg"
             assert msg.image.thumb_width == 100
+            assert msg.image.mid_size == 40039
+            assert msg.image.thumb_size == 12810
+            assert msg.image.hd_size == 0
 
     def test_parse_voice_message(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -236,6 +242,13 @@ class TestParseMessage:
                             "video_md5": "vid123",
                             "thumb_width": 640,
                             "thumb_height": 480,
+                            "video_size": 484355,
+                            "thumb_size": 5904,
+                            "thumb_media": {
+                                "encrypt_query_param": "thumb_param",
+                                "aes_key": "thumbkey",
+                                "full_url": "https://cdn.example.com/thumb",
+                            },
                         },
                     }
                 ],
@@ -246,6 +259,40 @@ class TestParseMessage:
             assert msg.video is not None
             assert msg.video.play_length == 30
             assert msg.video.thumb_width == 640
+            assert msg.video.video_size == 484355
+            assert msg.video.thumb_size == 5904
+            assert msg.video.thumb_media is not None
+            assert msg.video.thumb_media.encrypt_query_param == "thumb_param"
+            assert msg.video.thumb_media.aes_key == "thumbkey"
+            assert msg.video.thumb_media.full_url == "https://cdn.example.com/thumb"
+
+    def test_parse_video_message_no_thumb_media(self):
+        """Video without thumb_media should have thumb_media=None."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            wl = WeiLink(token_path=Path(tmpdir) / "token.json")
+            raw = {
+                "from_user_id": "user@im.wechat",
+                "message_type": 1,
+                "context_token": "ctx_video2",
+                "item_list": [
+                    {
+                        "type": 5,
+                        "video_item": {
+                            "media": {"aes_key": "vidkey"},
+                            "play_length": 10,
+                            "video_md5": "md5abc",
+                            "thumb_width": 320,
+                            "thumb_height": 240,
+                        },
+                    }
+                ],
+            }
+            msg = wl._parse_message(raw)
+            assert msg is not None
+            assert msg.video is not None
+            assert msg.video.thumb_media is None
+            assert msg.video.video_size == 0
+            assert msg.video.thumb_size == 0
 
     def test_parse_empty_from(self):
         with tempfile.TemporaryDirectory() as tmpdir:
