@@ -1006,7 +1006,9 @@ function formatTime(ts) {
 // Render
 // ============================================================
 function renderSessions(data) {
-  const sessions = data.sessions || [];
+  const allSessions = data.sessions || [];
+  // Hide sessions that have never been used (no bot_id, not connected, no users)
+  const sessions = allSessions.filter(s => s.connected || s.bot_id || s.users.length > 0);
   const tbody = document.getElementById('sessionsBody');
   const empty = document.getElementById('emptyState');
 
@@ -1310,6 +1312,7 @@ function showToast(message, isError = false) {
 // ============================================================
 const _msgState = { userId: null, botId: null, offset: 0, total: 0, loading: false };
 let _msgSearchTimer = null;
+let _msgPollTimer = null;
 
 const MSG_TYPE_ICONS = { IMAGE: '\ud83d\uddbc\ufe0f', VOICE: '\ud83c\udfa4', FILE: '\ud83d\udcce', VIDEO: '\ud83c\udfac' };
 const PAGE_SIZE = 30;
@@ -1336,6 +1339,9 @@ function openMessageDrawer(userId, botId, sessionName) {
   document.getElementById('msgDrawer').classList.add('active');
   document.body.style.overflow = 'hidden';
   reloadMessages();
+  // Auto-refresh every 5 seconds while drawer is open
+  if (_msgPollTimer) clearInterval(_msgPollTimer);
+  _msgPollTimer = setInterval(pollNewMessages, 5000);
 }
 
 function closeMessageDrawer() {
@@ -1343,6 +1349,7 @@ function closeMessageDrawer() {
   document.body.style.overflow = '';
   _msgState.userId = null;
   _msgState.botId = null;
+  if (_msgPollTimer) { clearInterval(_msgPollTimer); _msgPollTimer = null; }
 }
 
 async function reloadMessages() {
@@ -1390,7 +1397,7 @@ async function fetchMessages(prepend) {
     _msgState.total = resp.total;
     const messages = resp.messages || [];
 
-    renderBubbles(messages, prepend);
+    renderBubbles(messages, prepend ? 'prepend' : 'replace');
     _msgState.offset += messages.length;
 
     // Footer
@@ -1415,7 +1422,7 @@ async function fetchMessages(prepend) {
   _msgState.loading = false;
 }
 
-function renderBubbles(messages, prepend) {
+function renderBubbles(messages, mode = 'replace') {
   const container = document.getElementById('msgBubbles');
   // API returns newest-first; reverse for chronological order (oldest at top)
   const ordered = [...messages].reverse();
@@ -1424,7 +1431,7 @@ function renderBubbles(messages, prepend) {
   let prevTs = 0;
 
   // If prepending, we need to check the timestamp of the first existing bubble
-  if (prepend && container.children.length > 0) {
+  if (mode === 'prepend' && container.children.length > 0) {
     // Get the timestamp of the first existing bubble for time-sep logic
     const firstExisting = container.querySelector('.bubble-wrap');
     if (firstExisting) {
@@ -1493,8 +1500,13 @@ function renderBubbles(messages, prepend) {
     </div>`;
   });
 
-  if (prepend) {
+  if (mode === 'prepend') {
     container.insertAdjacentHTML('afterbegin', html);
+  } else if (mode === 'append') {
+    const body = document.getElementById('msgDrawerBody');
+    const isAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 50;
+    container.insertAdjacentHTML('beforeend', html);
+    if (isAtBottom) body.scrollTop = body.scrollHeight;
   } else {
     container.innerHTML = html;
     // Scroll to bottom for initial load
@@ -1522,6 +1534,41 @@ function formatBubbleTime(tsMs) {
   if (!tsMs) return '';
   const d = new Date(tsMs);
   return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+async function pollNewMessages() {
+  if (_msgState.loading || !_msgState.userId) return;
+  try {
+    const params = {
+      user_id: _msgState.userId,
+      bot_id: _msgState.botId,
+      limit: 1,
+      offset: 0,
+    };
+    const typeVal = document.getElementById('msgTypeFilter').value;
+    if (typeVal) params.msg_type = typeVal;
+    const searchVal = document.getElementById('msgSearchInput').value.trim();
+    if (searchVal) params.text_contains = searchVal;
+
+    const resp = await api.getMessages(params);
+    if (resp.error || resp.total <= _msgState.total) return;
+
+    // Fetch only the new messages
+    const diff = resp.total - _msgState.total;
+    params.limit = diff;
+    const fullResp = await api.getMessages(params);
+    if (fullResp.error || !fullResp.messages || fullResp.messages.length === 0) return;
+
+    renderBubbles(fullResp.messages, 'append');
+    _msgState.total = resp.total;
+    _msgState.offset += fullResp.messages.length;
+
+    // Update footer
+    const loaded = document.querySelectorAll('#msgBubbles .bubble-wrap').length;
+    document.getElementById('msgDrawerFooter').textContent =
+      i18n.t('messages.showing', { n: loaded, total: _msgState.total });
+    document.getElementById('msgEmpty').style.display = loaded === 0 ? '' : 'none';
+  } catch (e) { /* ignore polling errors */ }
 }
 
 function debouncedReload() {
