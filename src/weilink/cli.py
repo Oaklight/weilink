@@ -264,17 +264,9 @@ def _run_download(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Derive filename
-    from weilink.models import MessageType
+    from weilink._helpers import media_filename
 
-    ext_map = {
-        MessageType.IMAGE: ".jpg",
-        MessageType.VOICE: ".amr",
-        MessageType.VIDEO: ".mp4",
-    }
-    if msg.file and msg.file.file_name:
-        name = msg.file.file_name
-    else:
-        name = f"{msg.message_id}{ext_map.get(msg.msg_type, '.bin')}"
+    name = media_filename(msg)
 
     out_path = out_dir / name
     out_path.write_bytes(data)
@@ -299,7 +291,7 @@ def _run_history(args: argparse.Namespace) -> None:
         wl.close()
         sys.exit(1)
 
-    from weilink.models import MessageType
+    from weilink._helpers import parse_direction, parse_message_type, parse_time
 
     kwargs: dict[str, Any] = {}
     if args.user:
@@ -307,9 +299,8 @@ def _run_history(args: argparse.Namespace) -> None:
     if args.bot:
         kwargs["bot_id"] = args.bot
     if args.type:
-        try:
-            kwargs["msg_type"] = MessageType[args.type.upper()].value
-        except KeyError:
+        mt = parse_message_type(args.type)
+        if mt is None:
             err = f"Unknown message type: {args.type}"
             if _json_flag(args):
                 print(json.dumps({"error": err}))
@@ -317,22 +308,17 @@ def _run_history(args: argparse.Namespace) -> None:
                 print(f"Error: {err}", file=sys.stderr)
             wl.close()
             sys.exit(1)
+        kwargs["msg_type"] = mt
     if args.direction:
-        d = args.direction.lower()
-        if d == "received":
-            kwargs["direction"] = 1
-        elif d == "sent":
-            kwargs["direction"] = 2
+        d = parse_direction(args.direction)
+        if d is not None:
+            kwargs["direction"] = d
     if args.since:
-        from weilink.server.app import _parse_time
-
-        ts = _parse_time(args.since)
+        ts = parse_time(args.since)
         if ts is not None:
             kwargs["since_ms"] = ts
     if args.until:
-        from weilink.server.app import _parse_time
-
-        ts = _parse_time(args.until)
+        ts = parse_time(args.until)
         if ts is not None:
             kwargs["until_ms"] = ts
     if args.text:

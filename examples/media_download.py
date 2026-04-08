@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from weilink import MessageType, WeiLink
+from weilink._helpers import media_filename
 
 logging.basicConfig(
     level=getattr(logging, os.environ.get("LOGLEVEL", "INFO").upper(), logging.INFO),
@@ -28,26 +29,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# File extensions by message type
-_EXT: dict[MessageType, str] = {
-    MessageType.IMAGE: ".jpg",
-    MessageType.VOICE: ".silk",
-    MessageType.VIDEO: ".mp4",
-}
 
-
-def _save_path(save_dir: Path, msg_type: MessageType, msg: object) -> Path:
+def _save_path(save_dir: Path, msg: object) -> Path:
     """Build a unique save path for a media message."""
     from weilink.models import Message
 
     assert isinstance(msg, Message)
-    mid = msg.message_id or 0
-
-    # Use original file name for FILE type
-    if msg_type == MessageType.FILE and msg.file:
-        name = msg.file.file_name or f"{mid}.bin"
-    else:
-        name = f"{mid}{_EXT.get(msg_type, '.bin')}"
+    name = media_filename(msg)
 
     path = save_dir / name
     # Avoid overwriting — append counter if file exists
@@ -100,7 +88,7 @@ def main() -> None:
                     wl.send(user, f"[Download failed: {e}]")
                     continue
 
-                path = _save_path(save_dir, msg.msg_type, msg)
+                path = _save_path(save_dir, msg)
                 path.write_bytes(data)
                 logger.info(
                     "Saved %s (%d bytes) -> %s", msg.msg_type.name, len(data), path

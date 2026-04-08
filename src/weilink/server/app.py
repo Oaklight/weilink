@@ -14,7 +14,14 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Literal
 
-from weilink import Message, MessageType, WeiLink
+from weilink import Message, WeiLink
+from weilink._helpers import (
+    media_filename,
+    parse_direction,
+    parse_message_type,
+    parse_time,
+    process_qr_status,
+)
 from weilink._protocol import ILinkError, SessionExpiredError
 
 logger = logging.getLogger(__name__)
@@ -228,7 +235,7 @@ async def download(message_id: str, save_dir: str = "") -> str:
         return json.dumps({"error": str(e)})
 
     # Determine file name
-    name = _media_filename(msg)
+    name = media_filename(msg)
     out_dir = Path(save_dir) if save_dir else _DEFAULT_DOWNLOAD_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / name
@@ -240,19 +247,6 @@ async def download(message_id: str, save_dir: str = "") -> str:
 
     out_path.write_bytes(data)
     return json.dumps({"path": str(out_path), "size": len(data)})
-
-
-def _media_filename(msg: Message) -> str:
-    """Derive a reasonable file name from a media message."""
-    ext_map = {
-        MessageType.IMAGE: ".jpg",
-        MessageType.VOICE: ".amr",
-        MessageType.VIDEO: ".mp4",
-    }
-    if msg.file and msg.file.file_name:
-        return msg.file.file_name
-    ext = ext_map.get(msg.msg_type, ".bin")
-    return f"{msg.message_id}{ext}"
 
 
 def sessions() -> str:
@@ -348,17 +342,11 @@ async def login(
             await asyncio.sleep(2)
             continue
 
-        status = status_resp.get("status", "")
+        qr = process_qr_status(status_resp)
 
-        if status == "confirmed":
+        if qr.status == "confirmed":
+            assert qr.bot_info is not None
             wl = _get_client()
-            bot_token = status_resp.get("bot_token", "")
-            base_url = status_resp.get("baseurl", proto.BASE_URL)
-            bot_id = status_resp.get("ilink_bot_id", "")
-            user_id = status_resp.get("ilink_user_id", "")
-
-            from weilink.models import BotInfo
-
             name = session_name_stored or "default"
             if name in wl._sessions:
                 session = wl._sessions[name]
@@ -366,9 +354,7 @@ async def login(
                 token_path = wl._base_path / name / "token.json"
                 session = wl._create_session(name, token_path)
 
-            session.bot_info = BotInfo(
-                bot_id=bot_id, base_url=base_url, token=bot_token, user_id=user_id
-            )
+            session.bot_info = qr.bot_info
             session.cursor = ""
             wl._save_session_state(session)
 
@@ -376,14 +362,13 @@ async def login(
             return json.dumps(
                 {
                     "status": "confirmed",
-                    "bot_id": bot_id,
+                    "bot_id": qr.bot_info.bot_id,
                     "session": name,
                     "message": "Login successful!",
                 }
             )
 
-        if status == "scaned":
-            # Return immediately on scan — agent knows user is interacting
+        if qr.status == "scanned":
             last_status = "scanned"
             return json.dumps(
                 {
@@ -392,7 +377,7 @@ async def login(
                 }
             )
 
-        if status == "expired":
+        if qr.status == "expired":
             _pending_login = None
             return json.dumps(
                 {
@@ -450,24 +435,21 @@ def history(
     if bot_id:
         kwargs["bot_id"] = bot_id
     if msg_type:
-        try:
-            kwargs["msg_type"] = MessageType[msg_type.upper()].value
-        except KeyError:
+        mt = parse_message_type(msg_type)
+        if mt is None:
             return json.dumps({"error": f"Unknown msg_type: {msg_type}"})
+        kwargs["msg_type"] = mt
     if direction:
-        d = direction.lower()
-        if d == "received":
-            kwargs["direction"] = 1
-        elif d == "sent":
-            kwargs["direction"] = 2
-        else:
+        d = parse_direction(direction)
+        if d is None:
             return json.dumps({"error": f"Unknown direction: {direction}"})
+        kwargs["direction"] = d
     if since:
-        ts = _parse_time(since)
+        ts = parse_time(since)
         if ts is not None:
             kwargs["since_ms"] = ts
     if until:
-        ts = _parse_time(until)
+        ts = parse_time(until)
         if ts is not None:
             kwargs["until_ms"] = ts
     if text_contains:
@@ -478,23 +460,6 @@ def history(
     return json.dumps(
         {"messages": messages, "total": total, "limit": limit, "offset": offset}
     )
-
-
-def _parse_time(s: str) -> int | None:
-    """Parse an ISO 8601 string or unix milliseconds to int ms."""
-    if not s:
-        return None
-    try:
-        return int(s)
-    except ValueError:
-        pass
-    try:
-        from datetime import datetime
-
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        return int(dt.timestamp() * 1000)
-    except (ValueError, TypeError):
-        return None
 
 
 async def logout(session_name: str = "") -> str:

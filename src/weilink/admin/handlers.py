@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from weilink import __version__
-from weilink.models import BotInfo
+from weilink._helpers import MEDIA_MIME_MAP, media_filename, process_qr_status
 
 from .static import ADMIN_HTML, load_locale
 
@@ -248,13 +248,10 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"status": "waiting"})
             return
 
-        status = status_resp.get("status", "")
+        qr = process_qr_status(status_resp)
 
-        if status == "confirmed":
-            bot_token = status_resp.get("bot_token", "")
-            base_url = status_resp.get("baseurl", proto.BASE_URL)
-            bot_id = status_resp.get("ilink_bot_id", "")
-            user_id = status_resp.get("ilink_user_id", "")
+        if qr.status == "confirmed":
+            assert qr.bot_info is not None
             name = pending["name"]
 
             with self._lock:
@@ -265,12 +262,7 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                     token_path = wl._base_path / name / "token.json"
                     session = wl._create_session(name, token_path)
 
-                session.bot_info = BotInfo(
-                    bot_id=bot_id,
-                    base_url=base_url,
-                    token=bot_token,
-                    user_id=user_id,
-                )
+                session.bot_info = qr.bot_info
                 session.cursor = ""
                 wl._save_session_state(session)
 
@@ -278,15 +270,15 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "status": "confirmed",
-                    "bot_id": bot_id,
+                    "bot_id": qr.bot_info.bot_id,
                     "session_name": name,
                 }
             )
 
-        elif status == "scaned":
+        elif qr.status == "scanned":
             self._send_json({"status": "scaned"})
 
-        elif status == "expired":
+        elif qr.status == "expired":
             del self._pending_logins[qrcode]
             self._send_json({"status": "expired"})
 
@@ -427,17 +419,6 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
                 m["message_id"] = str(m["message_id"])
         self._send_json({"messages": messages, "total": total})
 
-    _MIME_MAP: ClassVar[dict[str, str]] = {
-        "IMAGE": "image/jpeg",
-        "VOICE": "audio/amr",
-        "VIDEO": "video/mp4",
-    }
-    _EXT_MAP: ClassVar[dict[str, str]] = {
-        "IMAGE": ".jpg",
-        "VOICE": ".amr",
-        "VIDEO": ".mp4",
-    }
-
     def _handle_download_media(self, message_id_str: str) -> None:
         """Download media from a stored message and serve the bytes."""
         store = self.weilink._message_store
@@ -463,13 +444,8 @@ class AdminRequestHandler(BaseHTTPRequestHandler):
             return
 
         # Derive filename and MIME type
-        mt = msg.msg_type.name
-        if msg.file and msg.file.file_name:
-            filename = msg.file.file_name
-        else:
-            ext = self._EXT_MAP.get(mt, ".bin")
-            filename = f"{msg.message_id}{ext}"
-        content_type = self._MIME_MAP.get(mt, "application/octet-stream")
+        filename = media_filename(msg)
+        content_type = MEDIA_MIME_MAP.get(msg.msg_type, "application/octet-stream")
 
         self.send_response(200)
         self.send_header("Content-Type", content_type)

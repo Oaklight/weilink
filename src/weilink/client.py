@@ -19,6 +19,7 @@ from collections.abc import Callable
 
 from weilink._vendor.filelock import FileLock
 from weilink import _protocol as proto
+from weilink._helpers import process_qr_status
 from weilink.models import (
     BotInfo,
     FileInfo,
@@ -837,35 +838,28 @@ class WeiLink:
                 print(".", end="", flush=True)
                 continue
 
-            status = status_resp.get("status", "")
-            logger.debug("QR poll status=%s, keys=%s", status, list(status_resp.keys()))
+            qr = process_qr_status(status_resp)
+            logger.debug(
+                "QR poll status=%s, keys=%s", qr.status, list(status_resp.keys())
+            )
 
-            if status == "confirmed":
+            if qr.status == "confirmed":
+                assert qr.bot_info is not None
                 logger.debug(
                     "QR confirmed, response keys: %s", list(status_resp.keys())
                 )
-                bot_token = status_resp.get("bot_token", "")
-                base_url = status_resp.get("baseurl", proto.BASE_URL)
-                bot_id = status_resp.get("ilink_bot_id", "")
-                user_id = status_resp.get("ilink_user_id", "")
-
-                session.bot_info = BotInfo(
-                    bot_id=bot_id,
-                    base_url=base_url,
-                    token=bot_token,
-                    user_id=user_id,
-                )
+                session.bot_info = qr.bot_info
                 session.cursor = ""
                 with self._data_lock:
                     self._save_session_state(session)
-                print(f"\nLogin successful! Bot ID: {bot_id}")
+                print(f"\nLogin successful! Bot ID: {qr.bot_info.bot_id}")
                 return session.bot_info
 
-            if status == "scaned":
+            if qr.status == "scanned":
                 print("\nScanned, confirm on your phone...", end="", flush=True)
                 continue
 
-            if status == "expired":
+            if qr.status == "expired":
                 print("\nQR code expired, refreshing...")
                 qr_resp = proto.get_qr_code()
                 qrcode = qr_resp["qrcode"]
@@ -874,14 +868,6 @@ class WeiLink:
                 print("Waiting for scan...", end="", flush=True)
                 continue
 
-            # "wait" = server says no scan yet; any other unknown status
-            # is treated the same — keep polling.
-            if status not in ("wait", ""):
-                logger.info(
-                    "QR poll unknown status=%r, full_resp=%s",
-                    status,
-                    str(status_resp)[:500],
-                )
             print(".", end="", flush=True)
 
         raise proto.ILinkError(ret=-1, errmsg="QR code login timed out (5 min)")
