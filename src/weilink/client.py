@@ -1653,7 +1653,7 @@ class WeiLink:
                     else:
                         logger.warning(
                             "Dispatcher queue full, dropped oldest message %s",
-                            dropped.msg_id,
+                            dropped.message_id,
                         )
                     self._message_queue.put_nowait(msg)
 
