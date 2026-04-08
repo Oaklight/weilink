@@ -548,6 +548,59 @@ class MessageStore:
                 logger.warning("Failed to deserialize message: %s", data_json[:100])
         return results
 
+    def max_rowid(self) -> int:
+        """Return the current maximum row ID, or 0 if the table is empty."""
+        with self._lock:
+            row = self._conn.execute("SELECT MAX(id) FROM messages").fetchone()
+        return row[0] if row and row[0] is not None else 0
+
+    def query_since_rowid(
+        self,
+        since_id: int = 0,
+        *,
+        direction: int | None = None,
+    ) -> tuple[list[Message], int]:
+        """Return messages with rowid > *since_id* and the new high-water mark.
+
+        Intended for the store-watcher dispatcher fallback: poll SQLite
+        for rows inserted by another process.
+
+        Args:
+            since_id: Only return rows with ``id`` strictly greater than
+                this value.
+            direction: Optional direction filter (1=received, 2=sent).
+
+        Returns:
+            ``(messages, new_hwm)`` where *messages* is in chronological
+            order (oldest first) and *new_hwm* is the maximum ``id``
+            among returned rows (or *since_id* if none).
+        """
+        if self._closed:
+            return [], since_id
+
+        clauses = ["id > ?"]
+        params: list[Any] = [since_id]
+        if direction is not None:
+            clauses.append("direction = ?")
+            params.append(direction)
+
+        where = " WHERE " + " AND ".join(clauses)
+        sql = f"SELECT id, data FROM messages{where} ORDER BY id ASC"
+
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+
+        messages: list[Message] = []
+        new_hwm = since_id
+        for row_id, data_json in rows:
+            try:
+                messages.append(deserialize_message(data_json))
+                new_hwm = row_id
+            except (json.JSONDecodeError, KeyError, TypeError):
+                logger.warning("Failed to deserialize message: %s", data_json[:100])
+                new_hwm = row_id  # still advance past broken rows
+        return messages, new_hwm
+
     def count(
         self,
         *,
