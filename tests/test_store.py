@@ -509,6 +509,7 @@ class TestFullUrlPersistence:
 
     def test_store_roundtrip_preserves_full_url(self, store: MessageStore):
         msg = _make_image_msg(message_id=10)
+        assert msg.image is not None
         store.store([msg])
         result = store.get_by_id(10)
         assert result is not None
