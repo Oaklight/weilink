@@ -176,6 +176,7 @@ class TestProcessQrStatus:
         resp = {"status": "confirmed"}
         qr = process_qr_status(resp)
         assert qr.status == "confirmed"
+        assert qr.bot_info is not None
         assert qr.bot_info.bot_id == ""
         assert qr.bot_info.token == ""
 
@@ -215,4 +216,4 @@ class TestProcessQrStatus:
     def test_frozen(self):
         qr = QRResult(status="waiting")
         with pytest.raises(AttributeError):
-            qr.status = "confirmed"  # type: ignore[misc]
+            qr.status = "confirmed"
