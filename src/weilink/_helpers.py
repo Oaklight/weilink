@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
 from weilink.models import BotInfo, Message, MessageDirection, MessageType
+
+logger = logging.getLogger(__name__)
 
 
 # -- Media constants ---------------------------------------------------------
@@ -68,6 +71,14 @@ def process_qr_status(status_resp: dict[str, Any]) -> QRResult:
 
     if status == "expired":
         return QRResult(status="expired")
+
+    # Log unrecognized statuses (e.g. scaned_but_redirect) for investigation.
+    if status and status not in ("waiting", ""):
+        logger.debug(
+            "Unrecognized QR status %r, full response: %s",
+            status,
+            status_resp,
+        )
 
     return QRResult(status="waiting")
 

@@ -1036,8 +1036,16 @@ class WeiLink:
                 base_url=session.bot_info.base_url,
                 timeout=poll_timeout + 5,
             )
-        except proto.SessionExpiredError:
+        except proto.SessionExpiredError as e:
             # Clear cursor and context tokens per protocol spec §9.2
+            logger.warning(
+                "Session %r expired (ret=%s, errcode=%s, errmsg=%s), "
+                "clearing cursor and context tokens",
+                session.name,
+                e.ret,
+                e.errcode,
+                e.errmsg,
+            )
             session.cursor = ""
             session.context_tokens.clear()
             session.context_timestamps.clear()
