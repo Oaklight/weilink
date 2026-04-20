@@ -46,6 +46,38 @@ plugins:
             show_source: false
             show_root_heading: true
             members_order: source
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Home:
+          - index.md
+        Usage:
+          - usage/installation.md
+          - usage/quickstart.md
+          - usage/concepts.md
+          - usage/multi_session.md
+          - usage/mcp.md
+          - usage/setup.md
+          - usage/openapi.md
+          - usage/admin.md
+          - usage/cli.md
+          - usage/docker.md
+          - usage/gotchas.md
+        Architecture:
+          - architecture.md
+        API Reference:
+          - api/client.md
+          - api/session.md
+          - api/models.md
+        Examples:
+          - examples/simple_echo.md
+          - examples/callback_echo.md
+          - examples/echo_bot.md
+          - examples/media_echo.md
+          - examples/multi_echo.md
+          - examples/proactive.md
+        Changelog:
+          - changelog.md
 
 markdown_extensions:
   - admonition
