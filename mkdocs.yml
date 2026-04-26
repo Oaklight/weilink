@@ -1,7 +1,7 @@
 site_name: WeiLink
 site_description: 轻量级微信 iLink Bot 协议 Python SDK
 site_author: Peng Ding
-site_url: https://weilink.readthedocs.io/zh-cn/
+site_url: https://weilink.readthedocs.io/zh-cn/latest
 repo_name: Oaklight/weilink
 repo_url: https://github.com/Oaklight/weilink
 copyright: Copyright &copy; 2026 Peng Ding
