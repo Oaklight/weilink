@@ -44,18 +44,38 @@ logger = logging.getLogger(__name__)
 def _decode_aes_key(aes_key: str) -> bytes:
     """Decode an AES key from hex or base64 format.
 
+    The iLink protocol uses three key encoding formats:
+      - Format A: base64(raw 16 bytes)
+      - Format B: base64(hex string) — decodes to 32 ASCII hex bytes
+      - Direct hex: 32-char hex string (e.g. image_item.aeskey)
+
     Args:
-        aes_key: Key string, either 32-char hex or base64 encoded.
+        aes_key: Key string in any of the three formats above.
 
     Returns:
         16-byte AES key.
     """
+    # Direct hex: 32 hex chars → 16 bytes
     if len(aes_key) == 32:
         try:
             return bytes.fromhex(aes_key)
         except ValueError:
             pass
-    return base64.b64decode(aes_key)
+
+    raw = base64.b64decode(aes_key)
+
+    # Format A: base64 of raw 16 bytes
+    if len(raw) == 16:
+        return raw
+
+    # Format B: base64 of hex string → 32 ASCII hex bytes → 16 bytes
+    if len(raw) == 32:
+        try:
+            return bytes.fromhex(raw.decode("ascii"))
+        except (ValueError, UnicodeDecodeError):
+            pass
+
+    return raw
 
 
 def download_media(

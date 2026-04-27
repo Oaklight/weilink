@@ -26,6 +26,19 @@ class TestDecodeAesKey:
         result = _decode_aes_key(b64)
         assert result == raw
 
+    def test_base64_hex_key(self) -> None:
+        """Format B: base64(hex string) → 32 ASCII hex bytes → 16 bytes."""
+        import base64
+
+        from weilink._cdn import _decode_aes_key
+
+        hex_str = "0123456789abcdef0123456789abcdef"
+        expected = bytes.fromhex(hex_str)
+        b64 = base64.b64encode(hex_str.encode("ascii")).decode()
+        result = _decode_aes_key(b64)
+        assert result == expected
+        assert len(result) == 16
+
 
 class TestPaddedSize:
     """Tests for aes_ecb_padded_size."""
