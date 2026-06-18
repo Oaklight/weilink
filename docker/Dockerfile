@@ -21,12 +21,10 @@ RUN addgroup -g 1000 appgroup && \
 # Install su-exec for runtime user switching in entrypoint.
 RUN apk add --no-cache su-exec
 
-# Copy local wheels if available
+# Copy only the dist/ directory for local wheels (never copy the full tree —
+# even with .dockerignore, a broad COPY risks leaking secrets into layers).
 RUN mkdir -p /tmp/dist/
-COPY . /tmp/build/
-RUN if [ -d "/tmp/build/dist" ] && [ "$(ls -A /tmp/build/dist 2>/dev/null)" ]; then \
-        cp /tmp/build/dist/*.whl /tmp/dist/ 2>/dev/null || true; \
-    fi
+COPY dist/ /tmp/dist/
 
 # Install weilink[server]: local wheel > specific version > latest from PyPI
 # Then remove pip/setuptools to save ~10MB
@@ -53,7 +51,7 @@ RUN if [ -n "$LOCAL_WHEEL" ] && [ -f "/tmp/dist/$LOCAL_WHEEL" ]; then \
         fi; \
     fi && \
     pip uninstall -y pip setuptools 2>/dev/null || true && \
-    rm -rf /tmp/dist/ /tmp/build/
+    rm -rf /tmp/dist/
 
 # Data directory for session tokens — mount a volume here to persist across restarts.
 RUN mkdir -p /data/weilink && chown appuser:appgroup /data/weilink
