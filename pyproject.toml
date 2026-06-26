@@ -24,8 +24,8 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
-    "ruff>=0.1.0",
-    "ty>=0.0.24",
+    "ruff==0.15.20",
+    "ty==0.0.54",
     "build>=1.2.2.post1",
     "twine>=6.1.0",
 ]
