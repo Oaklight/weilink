@@ -1,16 +1,27 @@
 # /// zerodep
-# version = "0.3.0"
+# version = "0.5.0"
 # deps = []
 # tier = "medium"
 # category = "crypto"
+# note = "Install/update via: https://zerodep.readthedocs.io/en/latest/guide/cli/"
 # ///
 
-"""Pure-Python AES encryption: ECB, CBC, CTR, and GCM modes for 128/192/256-bit keys.
+"""AES encryption: ECB, CBC, CTR, and GCM modes for 128/192/256-bit keys.
 
 Part of zerodep: https://github.com/Oaklight/zerodep
 Copyright (c) 2026 Peng Ding. MIT License.
 
-Based on bozhu/AES-Python (MIT License):
+At import time this module tries to load the system *libcrypto* via ctypes
+for native-C performance.  If the library is unavailable the pure-Python
+implementation is used instead.  The public API is identical regardless of
+which backend is active.
+
+Check :data:`BACKEND` to see which one was selected at runtime::
+
+    >>> from aes.aes import BACKEND
+    >>> print(BACKEND)        # "openssl" or "python"
+
+Pure-Python AES based on bozhu/AES-Python (MIT License):
     Copyright (C) 2012 Bo Zhu http://about.bozhu.me
     https://github.com/bozhu/AES-Python
 """
@@ -26,10 +37,47 @@ __all__ = [
     "aes_ctr_decrypt",
     "aes_gcm_encrypt",
     "aes_gcm_decrypt",
+    "aes_ecb_padded_size",
     # Backward compatibility
     "aes128_ecb_encrypt",
     "aes128_ecb_decrypt",
+    "BACKEND",
 ]
+
+# ===========================================================================
+# Section 1: Shared constants and helpers
+# ===========================================================================
+
+_BLOCK = 16
+_KEY_PARAMS = {16: (4, 10), 24: (6, 12), 32: (8, 14)}  # key_len -> (nk, nr)
+
+
+def _validate_key(key: bytes) -> None:
+    if len(key) not in _KEY_PARAMS:
+        raise ValueError(f"key must be 16, 24, or 32 bytes, got {len(key)}")
+
+
+def _validate_iv(iv: bytes) -> None:
+    if len(iv) != _BLOCK:
+        raise ValueError(f"IV must be {_BLOCK} bytes, got {len(iv)}")
+
+
+def aes_ecb_padded_size(plaintext_size: int) -> int:
+    """Calculate the ciphertext size after AES-ECB + PKCS7 padding.
+
+    Args:
+        plaintext_size: Size of the original data in bytes.
+
+    Returns:
+        Size of the encrypted output in bytes.
+    """
+    pad_len = 16 - (plaintext_size % 16)
+    return plaintext_size + pad_len
+
+
+# ===========================================================================
+# Section 2: Pure-Python AES primitives (always available)
+# ===========================================================================
 
 # fmt: off
 _SBOX = (
@@ -78,21 +126,9 @@ _RCON = (
 )
 # fmt: on
 
-_BLOCK = 16
-_KEY_PARAMS = {16: (4, 10), 24: (6, 12), 32: (8, 14)}  # key_len -> (nk, nr)
-
-
-# ── Helpers ────────────────────────────────────────────────────────────────
-
-
-def _validate_key(key: bytes) -> None:
-    if len(key) not in _KEY_PARAMS:
-        raise ValueError(f"key must be 16, 24, or 32 bytes, got {len(key)}")
-
-
-def _validate_iv(iv: bytes) -> None:
-    if len(iv) != _BLOCK:
-        raise ValueError(f"IV must be {_BLOCK} bytes, got {len(iv)}")
+# ---------------------------------------------------------------------------
+# Pure-Python helpers
+# ---------------------------------------------------------------------------
 
 
 def _pkcs7_pad(data: bytes) -> bytes:
@@ -123,7 +159,9 @@ def _matrix_to_bytes(m: list[list[int]]) -> bytes:
     return bytes(b for row in m for b in row)
 
 
-# ── Key Expansion (AES-128/192/256) ────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Key Expansion (AES-128/192/256)
+# ---------------------------------------------------------------------------
 
 
 def _expand_key(key: bytes) -> list[list[list[int]]]:
@@ -152,7 +190,9 @@ def _expand_key(key: bytes) -> list[list[list[int]]]:
     return [rk[4 * r : 4 * (r + 1)] for r in range(nr + 1)]
 
 
-# ── AES Round Transformations ──────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# AES Round Transformations
+# ---------------------------------------------------------------------------
 
 
 def _add_round_key(s: list[list[int]], k: list[list[int]]) -> None:
@@ -210,7 +250,9 @@ def _inv_mix_columns(s: list[list[int]]) -> None:
     _mix_columns(s)
 
 
-# ── Block Encrypt / Decrypt (any key size) ─────────────────────────────────
+# ---------------------------------------------------------------------------
+# Block Encrypt / Decrypt (any key size)
+# ---------------------------------------------------------------------------
 
 
 def _encrypt_block(block: bytes, round_keys: list[list[list[int]]]) -> bytes:
@@ -243,148 +285,9 @@ def _decrypt_block(block: bytes, round_keys: list[list[list[int]]]) -> bytes:
     return _matrix_to_bytes(s)
 
 
-# ── ECB Mode + PKCS7 Padding ───────────────────────────────────────────────
-
-
-def aes_ecb_encrypt(data: bytes, key: bytes) -> bytes:
-    """Encrypt data with AES-ECB and PKCS7 padding.
-
-    Args:
-        data: Plaintext bytes.
-        key: 16, 24, or 32-byte AES key.
-
-    Returns:
-        Ciphertext bytes (length is a multiple of 16).
-    """
-    _validate_key(key)
-    padded = _pkcs7_pad(data)
-    rk = _expand_key(key)
-    out = bytearray()
-    for i in range(0, len(padded), _BLOCK):
-        out.extend(_encrypt_block(padded[i : i + _BLOCK], rk))
-    return bytes(out)
-
-
-def aes_ecb_decrypt(data: bytes, key: bytes) -> bytes:
-    """Decrypt AES-ECB ciphertext and remove PKCS7 padding.
-
-    Args:
-        data: Ciphertext bytes (must be a multiple of 16).
-        key: 16, 24, or 32-byte AES key.
-
-    Returns:
-        Plaintext bytes.
-
-    Raises:
-        ValueError: If padding is invalid.
-    """
-    _validate_key(key)
-    rk = _expand_key(key)
-    out = bytearray()
-    for i in range(0, len(data), _BLOCK):
-        out.extend(_decrypt_block(data[i : i + _BLOCK], rk))
-    return _pkcs7_unpad(bytes(out))
-
-
-# Backward compatibility
-aes128_ecb_encrypt = aes_ecb_encrypt
-aes128_ecb_decrypt = aes_ecb_decrypt
-
-
-# ── CBC Mode + PKCS7 Padding ───────────────────────────────────────────────
-
-
-def aes_cbc_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-    """Encrypt data with AES-CBC and PKCS7 padding.
-
-    Args:
-        data: Plaintext bytes.
-        key: 16, 24, or 32-byte AES key.
-        iv: 16-byte initialization vector.
-
-    Returns:
-        Ciphertext bytes (length is a multiple of 16).
-    """
-    _validate_key(key)
-    _validate_iv(iv)
-    padded = _pkcs7_pad(data)
-    rk = _expand_key(key)
-    out = bytearray()
-    prev = iv
-    for i in range(0, len(padded), _BLOCK):
-        block = padded[i : i + _BLOCK]
-        xored = bytes(a ^ b for a, b in zip(block, prev))
-        encrypted = _encrypt_block(xored, rk)
-        out.extend(encrypted)
-        prev = encrypted
-    return bytes(out)
-
-
-def aes_cbc_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
-    """Decrypt AES-CBC ciphertext and remove PKCS7 padding.
-
-    Args:
-        data: Ciphertext bytes (must be a multiple of 16).
-        key: 16, 24, or 32-byte AES key.
-        iv: 16-byte initialization vector.
-
-    Returns:
-        Plaintext bytes.
-
-    Raises:
-        ValueError: If padding is invalid.
-    """
-    _validate_key(key)
-    _validate_iv(iv)
-    rk = _expand_key(key)
-    out = bytearray()
-    prev = iv
-    for i in range(0, len(data), _BLOCK):
-        block = data[i : i + _BLOCK]
-        decrypted = _decrypt_block(block, rk)
-        out.extend(a ^ b for a, b in zip(decrypted, prev))
-        prev = block
-    return _pkcs7_unpad(bytes(out))
-
-
-# ── CTR Mode (no padding) ──────────────────────────────────────────────────
-
-
-def _inc_counter(counter: bytes) -> bytes:
-    """Increment a 16-byte counter block as a 128-bit big-endian integer."""
-    val = int.from_bytes(counter, "big") + 1
-    return (val & ((1 << 128) - 1)).to_bytes(16, "big")
-
-
-def aes_ctr_encrypt(data: bytes, key: bytes, nonce: bytes) -> bytes:
-    """Encrypt data with AES-CTR (no padding).
-
-    Args:
-        data: Plaintext bytes (any length).
-        key: 16, 24, or 32-byte AES key.
-        nonce: 16-byte initial counter block.
-
-    Returns:
-        Ciphertext bytes (same length as input).
-    """
-    _validate_key(key)
-    if len(nonce) != _BLOCK:
-        raise ValueError(f"nonce must be {_BLOCK} bytes, got {len(nonce)}")
-    rk = _expand_key(key)
-    out = bytearray()
-    ctr = nonce
-    for i in range(0, len(data), _BLOCK):
-        keystream = _encrypt_block(ctr, rk)
-        chunk = data[i : i + _BLOCK]
-        out.extend(b ^ k for b, k in zip(chunk, keystream))
-        ctr = _inc_counter(ctr)
-    return bytes(out)
-
-
-aes_ctr_decrypt = aes_ctr_encrypt
-
-
-# ── GCM Mode (authenticated encryption) ────────────────────────────────────
+# ---------------------------------------------------------------------------
+# GCM primitives (pure Python)
+# ---------------------------------------------------------------------------
 
 _GF128_R = 0xE1000000000000000000000000000000
 
@@ -435,6 +338,12 @@ def _inc32(block: bytes) -> bytes:
     return block[:12] + ctr.to_bytes(4, "big")
 
 
+def _inc_counter(counter: bytes) -> bytes:
+    """Increment a 16-byte counter block as a 128-bit big-endian integer."""
+    val = int.from_bytes(counter, "big") + 1
+    return (val & ((1 << 128) - 1)).to_bytes(16, "big")
+
+
 def _gcm_j0(rk: list[list[list[int]]], nonce: bytes) -> bytes:
     """Compute initial counter block J0 per NIST SP 800-38D."""
     if len(nonce) == 12:
@@ -453,14 +362,140 @@ def _gcm_j0(rk: list[list[list[int]]], nonce: bytes) -> bytes:
     return j0_int.to_bytes(16, "big")
 
 
-def aes_gcm_encrypt(
+# ---------------------------------------------------------------------------
+# Pure-Python public-facing implementations (_py_ prefix)
+# ---------------------------------------------------------------------------
+
+
+def _py_aes_ecb_encrypt(data: bytes, key: bytes) -> bytes:
+    """Encrypt data with AES-ECB and PKCS7 padding (pure Python).
+
+    Args:
+        data: Plaintext bytes.
+        key: 16, 24, or 32-byte AES key.
+
+    Returns:
+        Ciphertext bytes (length is a multiple of 16).
+    """
+    _validate_key(key)
+    padded = _pkcs7_pad(data)
+    rk = _expand_key(key)
+    out = bytearray()
+    for i in range(0, len(padded), _BLOCK):
+        out.extend(_encrypt_block(padded[i : i + _BLOCK], rk))
+    return bytes(out)
+
+
+def _py_aes_ecb_decrypt(data: bytes, key: bytes) -> bytes:
+    """Decrypt AES-ECB ciphertext and remove PKCS7 padding (pure Python).
+
+    Args:
+        data: Ciphertext bytes (must be a multiple of 16).
+        key: 16, 24, or 32-byte AES key.
+
+    Returns:
+        Plaintext bytes.
+
+    Raises:
+        ValueError: If padding is invalid.
+    """
+    _validate_key(key)
+    rk = _expand_key(key)
+    out = bytearray()
+    for i in range(0, len(data), _BLOCK):
+        out.extend(_decrypt_block(data[i : i + _BLOCK], rk))
+    return _pkcs7_unpad(bytes(out))
+
+
+def _py_aes_cbc_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+    """Encrypt data with AES-CBC and PKCS7 padding (pure Python).
+
+    Args:
+        data: Plaintext bytes.
+        key: 16, 24, or 32-byte AES key.
+        iv: 16-byte initialization vector.
+
+    Returns:
+        Ciphertext bytes (length is a multiple of 16).
+    """
+    _validate_key(key)
+    _validate_iv(iv)
+    padded = _pkcs7_pad(data)
+    rk = _expand_key(key)
+    out = bytearray()
+    prev = iv
+    for i in range(0, len(padded), _BLOCK):
+        block = padded[i : i + _BLOCK]
+        xored = bytes(a ^ b for a, b in zip(block, prev))
+        encrypted = _encrypt_block(xored, rk)
+        out.extend(encrypted)
+        prev = encrypted
+    return bytes(out)
+
+
+def _py_aes_cbc_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+    """Decrypt AES-CBC ciphertext and remove PKCS7 padding (pure Python).
+
+    Args:
+        data: Ciphertext bytes (must be a multiple of 16).
+        key: 16, 24, or 32-byte AES key.
+        iv: 16-byte initialization vector.
+
+    Returns:
+        Plaintext bytes.
+
+    Raises:
+        ValueError: If padding is invalid.
+    """
+    _validate_key(key)
+    _validate_iv(iv)
+    rk = _expand_key(key)
+    out = bytearray()
+    prev = iv
+    for i in range(0, len(data), _BLOCK):
+        block = data[i : i + _BLOCK]
+        decrypted = _decrypt_block(block, rk)
+        out.extend(a ^ b for a, b in zip(decrypted, prev))
+        prev = block
+    return _pkcs7_unpad(bytes(out))
+
+
+def _py_aes_ctr_encrypt(data: bytes, key: bytes, nonce: bytes) -> bytes:
+    """Encrypt data with AES-CTR, no padding (pure Python).
+
+    Args:
+        data: Plaintext bytes (any length).
+        key: 16, 24, or 32-byte AES key.
+        nonce: 16-byte initial counter block.
+
+    Returns:
+        Ciphertext bytes (same length as input).
+    """
+    _validate_key(key)
+    if len(nonce) != _BLOCK:
+        raise ValueError(f"nonce must be {_BLOCK} bytes, got {len(nonce)}")
+    rk = _expand_key(key)
+    out = bytearray()
+    ctr = nonce
+    for i in range(0, len(data), _BLOCK):
+        keystream = _encrypt_block(ctr, rk)
+        chunk = data[i : i + _BLOCK]
+        out.extend(b ^ k for b, k in zip(chunk, keystream))
+        ctr = _inc_counter(ctr)
+    return bytes(out)
+
+
+_py_aes_ctr_decrypt = _py_aes_ctr_encrypt
+
+
+def _py_aes_gcm_encrypt(
     data: bytes,
     key: bytes,
     nonce: bytes,
     aad: bytes = b"",
     tag_length: int = 16,
 ) -> tuple[bytes, bytes]:
-    """Encrypt data with AES-GCM (authenticated encryption).
+    """Encrypt data with AES-GCM, authenticated encryption (pure Python).
 
     Args:
         data: Plaintext bytes.
@@ -503,14 +538,14 @@ def aes_gcm_encrypt(
     return ct, tag
 
 
-def aes_gcm_decrypt(
+def _py_aes_gcm_decrypt(
     data: bytes,
     key: bytes,
     nonce: bytes,
     tag: bytes,
     aad: bytes = b"",
 ) -> bytes:
-    """Decrypt AES-GCM ciphertext and verify authentication tag.
+    """Decrypt AES-GCM ciphertext and verify authentication tag (pure Python).
 
     Args:
         data: Ciphertext bytes.
@@ -557,3 +592,500 @@ def aes_gcm_decrypt(
         ctr = _inc32(ctr)
 
     return bytes(pt)
+
+
+# ===========================================================================
+# Section 3: OpenSSL ctypes backend (conditional)
+# ===========================================================================
+
+_HAS_OPENSSL = False
+
+try:
+    import ctypes
+    import ctypes.util
+    import sys
+    from ctypes import POINTER, byref, c_int, c_void_p, create_string_buffer
+
+    # -- Locate and load libcrypto -----------------------------------------
+
+    _CANDIDATES: dict[str, list[str]] = {
+        "linux": ["libcrypto.so.3", "libcrypto.so.1.1", "libcrypto.so"],
+        "darwin": [
+            "/opt/homebrew/lib/libcrypto.dylib",
+            "/usr/local/lib/libcrypto.dylib",
+            "libcrypto.dylib",
+        ],
+        "win32": [
+            "libcrypto-3-x64.dll",
+            "libcrypto-3.dll",
+            "libcrypto-1_1-x64.dll",
+            "libcrypto-1_1.dll",
+        ],
+    }
+
+    def _load_libcrypto() -> ctypes.CDLL:
+        # Prefer the canonical name via find_library (works cross-platform).
+        path = ctypes.util.find_library("crypto")
+        if path:
+            return ctypes.CDLL(path)
+
+        # Platform-specific fallback names / absolute paths.
+        for candidate in _CANDIDATES.get(sys.platform, []):
+            try:
+                return ctypes.CDLL(candidate)
+            except OSError:
+                continue
+
+        raise OSError("libcrypto not found")
+
+    _lib = _load_libcrypto()
+
+    # -- Declare EVP function signatures -----------------------------------
+
+    _lib.EVP_CIPHER_CTX_new.restype = c_void_p
+    _lib.EVP_CIPHER_CTX_new.argtypes = []
+
+    _lib.EVP_CIPHER_CTX_free.restype = None
+    _lib.EVP_CIPHER_CTX_free.argtypes = [c_void_p]
+
+    _lib.EVP_CIPHER_CTX_set_padding.restype = c_int
+    _lib.EVP_CIPHER_CTX_set_padding.argtypes = [c_void_p, c_int]
+
+    _lib.EVP_CIPHER_CTX_ctrl.restype = c_int
+    _lib.EVP_CIPHER_CTX_ctrl.argtypes = [c_void_p, c_int, c_int, c_void_p]
+
+    for _fn_name in (
+        "EVP_EncryptInit_ex",
+        "EVP_DecryptInit_ex",
+    ):
+        _fn = getattr(_lib, _fn_name)
+        _fn.restype = c_int
+        _fn.argtypes = [
+            c_void_p,
+            c_void_p,
+            c_void_p,
+            ctypes.c_char_p,
+            ctypes.c_char_p,
+        ]
+
+    for _fn_name in (
+        "EVP_EncryptUpdate",
+        "EVP_DecryptUpdate",
+    ):
+        _fn = getattr(_lib, _fn_name)
+        _fn.restype = c_int
+        _fn.argtypes = [
+            c_void_p,
+            ctypes.c_char_p,
+            POINTER(c_int),
+            ctypes.c_char_p,
+            c_int,
+        ]
+
+    for _fn_name in (
+        "EVP_EncryptFinal_ex",
+        "EVP_DecryptFinal_ex",
+    ):
+        _fn = getattr(_lib, _fn_name)
+        _fn.restype = c_int
+        _fn.argtypes = [c_void_p, ctypes.c_char_p, POINTER(c_int)]
+
+    # Cipher descriptor functions
+    for _fn_name in (
+        "EVP_aes_128_ecb",
+        "EVP_aes_192_ecb",
+        "EVP_aes_256_ecb",
+        "EVP_aes_128_cbc",
+        "EVP_aes_192_cbc",
+        "EVP_aes_256_cbc",
+        "EVP_aes_128_ctr",
+        "EVP_aes_192_ctr",
+        "EVP_aes_256_ctr",
+        "EVP_aes_128_gcm",
+        "EVP_aes_192_gcm",
+        "EVP_aes_256_gcm",
+    ):
+        _fn = getattr(_lib, _fn_name)
+        _fn.restype = c_void_p
+        _fn.argtypes = []
+
+    # Cipher lookup: (key_length, mode) -> cipher descriptor
+    _CIPHER_MAP: dict[tuple[int, str], int] = {
+        (16, "ecb"): _lib.EVP_aes_128_ecb(),
+        (24, "ecb"): _lib.EVP_aes_192_ecb(),
+        (32, "ecb"): _lib.EVP_aes_256_ecb(),
+        (16, "cbc"): _lib.EVP_aes_128_cbc(),
+        (24, "cbc"): _lib.EVP_aes_192_cbc(),
+        (32, "cbc"): _lib.EVP_aes_256_cbc(),
+        (16, "ctr"): _lib.EVP_aes_128_ctr(),
+        (24, "ctr"): _lib.EVP_aes_192_ctr(),
+        (32, "ctr"): _lib.EVP_aes_256_ctr(),
+        (16, "gcm"): _lib.EVP_aes_128_gcm(),
+        (24, "gcm"): _lib.EVP_aes_192_gcm(),
+        (32, "gcm"): _lib.EVP_aes_256_gcm(),
+    }
+
+    # GCM ctrl constants
+    _EVP_CTRL_GCM_SET_IVLEN = 0x9
+    _EVP_CTRL_GCM_GET_TAG = 0x10
+    _EVP_CTRL_GCM_SET_TAG = 0x11
+
+    # -- Generic EVP encrypt / decrypt (for ECB, CBC, CTR) -----------------
+
+    def _evp_encrypt(
+        data: bytes,
+        key: bytes,
+        mode: str,
+        iv: bytes | None = None,
+        *,
+        padding: bool = True,
+    ) -> bytes:
+        cipher = _CIPHER_MAP[(len(key), mode)]
+        ctx = _lib.EVP_CIPHER_CTX_new()
+        if not ctx:
+            raise RuntimeError("EVP_CIPHER_CTX_new failed")
+        try:
+            iv_arg = iv if iv is not None else None
+            if _lib.EVP_EncryptInit_ex(ctx, cipher, None, key, iv_arg) != 1:
+                raise RuntimeError("EVP_EncryptInit_ex failed")
+
+            if not padding:
+                _lib.EVP_CIPHER_CTX_set_padding(ctx, 0)
+
+            out_len = c_int(0)
+            buf = create_string_buffer(len(data) + _BLOCK)
+
+            if _lib.EVP_EncryptUpdate(ctx, buf, byref(out_len), data, len(data)) != 1:
+                raise RuntimeError("EVP_EncryptUpdate failed")
+            written = out_len.value
+
+            final_buf = create_string_buffer(_BLOCK)
+            if _lib.EVP_EncryptFinal_ex(ctx, final_buf, byref(out_len)) != 1:
+                raise RuntimeError("EVP_EncryptFinal_ex failed")
+
+            return buf.raw[:written] + final_buf.raw[: out_len.value]
+        finally:
+            _lib.EVP_CIPHER_CTX_free(ctx)
+
+    def _evp_decrypt(
+        data: bytes,
+        key: bytes,
+        mode: str,
+        iv: bytes | None = None,
+        *,
+        padding: bool = True,
+    ) -> bytes:
+        cipher = _CIPHER_MAP[(len(key), mode)]
+        ctx = _lib.EVP_CIPHER_CTX_new()
+        if not ctx:
+            raise RuntimeError("EVP_CIPHER_CTX_new failed")
+        try:
+            iv_arg = iv if iv is not None else None
+            if _lib.EVP_DecryptInit_ex(ctx, cipher, None, key, iv_arg) != 1:
+                raise RuntimeError("EVP_DecryptInit_ex failed")
+
+            if not padding:
+                _lib.EVP_CIPHER_CTX_set_padding(ctx, 0)
+
+            out_len = c_int(0)
+            buf = create_string_buffer(len(data) + _BLOCK)
+
+            if _lib.EVP_DecryptUpdate(ctx, buf, byref(out_len), data, len(data)) != 1:
+                raise RuntimeError("EVP_DecryptUpdate failed")
+            written = out_len.value
+
+            final_buf = create_string_buffer(_BLOCK)
+            if _lib.EVP_DecryptFinal_ex(ctx, final_buf, byref(out_len)) != 1:
+                raise RuntimeError("EVP_DecryptFinal_ex failed")
+
+            return buf.raw[:written] + final_buf.raw[: out_len.value]
+        finally:
+            _lib.EVP_CIPHER_CTX_free(ctx)
+
+    # -- OpenSSL public-facing implementations (_ssl_ prefix) --------------
+
+    def _ssl_aes_ecb_encrypt(data: bytes, key: bytes) -> bytes:
+        """Encrypt data with AES-ECB and PKCS7 padding (OpenSSL).
+
+        Args:
+            data: Plaintext bytes.
+            key: 16, 24, or 32-byte AES key.
+
+        Returns:
+            Ciphertext bytes (length is a multiple of 16).
+        """
+        _validate_key(key)
+        return _evp_encrypt(data, key, "ecb")
+
+    def _ssl_aes_ecb_decrypt(data: bytes, key: bytes) -> bytes:
+        """Decrypt AES-ECB ciphertext and remove PKCS7 padding (OpenSSL).
+
+        Args:
+            data: Ciphertext bytes (must be a multiple of 16).
+            key: 16, 24, or 32-byte AES key.
+
+        Returns:
+            Plaintext bytes.
+
+        Raises:
+            RuntimeError: If padding is invalid.
+        """
+        _validate_key(key)
+        return _evp_decrypt(data, key, "ecb")
+
+    def _ssl_aes_cbc_encrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+        """Encrypt data with AES-CBC and PKCS7 padding (OpenSSL).
+
+        Args:
+            data: Plaintext bytes.
+            key: 16, 24, or 32-byte AES key.
+            iv: 16-byte initialization vector.
+
+        Returns:
+            Ciphertext bytes (length is a multiple of 16).
+        """
+        _validate_key(key)
+        _validate_iv(iv)
+        return _evp_encrypt(data, key, "cbc", iv)
+
+    def _ssl_aes_cbc_decrypt(data: bytes, key: bytes, iv: bytes) -> bytes:
+        """Decrypt AES-CBC ciphertext and remove PKCS7 padding (OpenSSL).
+
+        Args:
+            data: Ciphertext bytes (must be a multiple of 16).
+            key: 16, 24, or 32-byte AES key.
+            iv: 16-byte initialization vector.
+
+        Returns:
+            Plaintext bytes.
+
+        Raises:
+            RuntimeError: If padding is invalid.
+        """
+        _validate_key(key)
+        _validate_iv(iv)
+        return _evp_decrypt(data, key, "cbc", iv)
+
+    def _ssl_aes_ctr_encrypt(data: bytes, key: bytes, nonce: bytes) -> bytes:
+        """Encrypt data with AES-CTR, no padding (OpenSSL).
+
+        Args:
+            data: Plaintext bytes (any length).
+            key: 16, 24, or 32-byte AES key.
+            nonce: 16-byte initial counter block.
+
+        Returns:
+            Ciphertext bytes (same length as input).
+        """
+        _validate_key(key)
+        if len(nonce) != _BLOCK:
+            raise ValueError(f"nonce must be {_BLOCK} bytes, got {len(nonce)}")
+        return _evp_encrypt(data, key, "ctr", nonce, padding=False)
+
+    _ssl_aes_ctr_decrypt = _ssl_aes_ctr_encrypt
+
+    def _ssl_aes_gcm_encrypt(
+        data: bytes,
+        key: bytes,
+        nonce: bytes,
+        aad: bytes = b"",
+        tag_length: int = 16,
+    ) -> tuple[bytes, bytes]:
+        """Encrypt data with AES-GCM, authenticated encryption (OpenSSL).
+
+        Args:
+            data: Plaintext bytes.
+            key: 16, 24, or 32-byte AES key.
+            nonce: Nonce bytes (12 bytes recommended).
+            aad: Additional authenticated data.
+            tag_length: Authentication tag length in bytes (4-16).
+
+        Returns:
+            Tuple of (ciphertext, authentication_tag).
+        """
+        _validate_key(key)
+        if not nonce:
+            raise ValueError("nonce must not be empty")
+        if not (4 <= tag_length <= 16):
+            raise ValueError(f"tag_length must be 4-16, got {tag_length}")
+
+        cipher = _CIPHER_MAP[(len(key), "gcm")]
+        ctx = _lib.EVP_CIPHER_CTX_new()
+        if not ctx:
+            raise RuntimeError("EVP_CIPHER_CTX_new failed")
+        try:
+            # Phase 1: set cipher (key=NULL, iv=NULL)
+            if _lib.EVP_EncryptInit_ex(ctx, cipher, None, None, None) != 1:
+                raise RuntimeError("EVP_EncryptInit_ex failed (cipher)")
+
+            # Set IV length if not 12 bytes
+            if len(nonce) != 12:
+                if (
+                    _lib.EVP_CIPHER_CTX_ctrl(
+                        ctx, _EVP_CTRL_GCM_SET_IVLEN, len(nonce), None
+                    )
+                    != 1
+                ):
+                    raise RuntimeError("EVP_CIPHER_CTX_ctrl SET_IVLEN failed")
+
+            # Phase 2: set key and IV
+            if _lib.EVP_EncryptInit_ex(ctx, None, None, key, nonce) != 1:
+                raise RuntimeError("EVP_EncryptInit_ex failed (key/iv)")
+
+            out_len = c_int(0)
+
+            # Pass AAD (output pointer is not used for AAD)
+            if aad:
+                if (
+                    _lib.EVP_EncryptUpdate(ctx, None, byref(out_len), aad, len(aad))
+                    != 1
+                ):
+                    raise RuntimeError("EVP_EncryptUpdate AAD failed")
+
+            # Encrypt plaintext
+            buf = create_string_buffer(len(data) + _BLOCK)
+            if _lib.EVP_EncryptUpdate(ctx, buf, byref(out_len), data, len(data)) != 1:
+                raise RuntimeError("EVP_EncryptUpdate failed")
+            written = out_len.value
+
+            # Finalize
+            final_buf = create_string_buffer(_BLOCK)
+            if _lib.EVP_EncryptFinal_ex(ctx, final_buf, byref(out_len)) != 1:
+                raise RuntimeError("EVP_EncryptFinal_ex failed")
+            written += out_len.value
+
+            # Get authentication tag
+            tag_buf = create_string_buffer(tag_length)
+            if (
+                _lib.EVP_CIPHER_CTX_ctrl(
+                    ctx, _EVP_CTRL_GCM_GET_TAG, tag_length, tag_buf
+                )
+                != 1
+            ):
+                raise RuntimeError("EVP_CIPHER_CTX_ctrl GET_TAG failed")
+
+            return buf.raw[:written], tag_buf.raw[:tag_length]
+        finally:
+            _lib.EVP_CIPHER_CTX_free(ctx)
+
+    def _ssl_aes_gcm_decrypt(
+        data: bytes,
+        key: bytes,
+        nonce: bytes,
+        tag: bytes,
+        aad: bytes = b"",
+    ) -> bytes:
+        """Decrypt AES-GCM ciphertext and verify authentication tag (OpenSSL).
+
+        Args:
+            data: Ciphertext bytes.
+            key: 16, 24, or 32-byte AES key.
+            nonce: Nonce bytes (must match the one used for encryption).
+            tag: Authentication tag to verify.
+            aad: Additional authenticated data.
+
+        Returns:
+            Plaintext bytes.
+
+        Raises:
+            ValueError: If authentication fails (tag mismatch).
+        """
+        _validate_key(key)
+        if not nonce:
+            raise ValueError("nonce must not be empty")
+        tag_length = len(tag)
+        if not (4 <= tag_length <= 16):
+            raise ValueError(f"tag must be 4-16 bytes, got {tag_length}")
+
+        cipher = _CIPHER_MAP[(len(key), "gcm")]
+        ctx = _lib.EVP_CIPHER_CTX_new()
+        if not ctx:
+            raise RuntimeError("EVP_CIPHER_CTX_new failed")
+        try:
+            # Phase 1: set cipher
+            if _lib.EVP_DecryptInit_ex(ctx, cipher, None, None, None) != 1:
+                raise RuntimeError("EVP_DecryptInit_ex failed (cipher)")
+
+            # Set IV length if not 12 bytes
+            if len(nonce) != 12:
+                if (
+                    _lib.EVP_CIPHER_CTX_ctrl(
+                        ctx, _EVP_CTRL_GCM_SET_IVLEN, len(nonce), None
+                    )
+                    != 1
+                ):
+                    raise RuntimeError("EVP_CIPHER_CTX_ctrl SET_IVLEN failed")
+
+            # Phase 2: set key and IV
+            if _lib.EVP_DecryptInit_ex(ctx, None, None, key, nonce) != 1:
+                raise RuntimeError("EVP_DecryptInit_ex failed (key/iv)")
+
+            out_len = c_int(0)
+
+            # Pass AAD
+            if aad:
+                if (
+                    _lib.EVP_DecryptUpdate(ctx, None, byref(out_len), aad, len(aad))
+                    != 1
+                ):
+                    raise RuntimeError("EVP_DecryptUpdate AAD failed")
+
+            # Decrypt ciphertext
+            buf = create_string_buffer(len(data) + _BLOCK)
+            if _lib.EVP_DecryptUpdate(ctx, buf, byref(out_len), data, len(data)) != 1:
+                raise RuntimeError("EVP_DecryptUpdate failed")
+            written = out_len.value
+
+            # Set expected tag before finalization
+            tag_buf = create_string_buffer(tag, tag_length)
+            if (
+                _lib.EVP_CIPHER_CTX_ctrl(
+                    ctx, _EVP_CTRL_GCM_SET_TAG, tag_length, tag_buf
+                )
+                != 1
+            ):
+                raise RuntimeError("EVP_CIPHER_CTX_ctrl SET_TAG failed")
+
+            # Finalize -- returns 0 if tag verification fails
+            final_buf = create_string_buffer(_BLOCK)
+            if _lib.EVP_DecryptFinal_ex(ctx, final_buf, byref(out_len)) != 1:
+                raise ValueError("authentication failed")
+            written += out_len.value
+
+            return buf.raw[:written]
+        finally:
+            _lib.EVP_CIPHER_CTX_free(ctx)
+
+    _HAS_OPENSSL = True
+
+except (OSError, ImportError):
+    _HAS_OPENSSL = False
+
+# ===========================================================================
+# Section 4: Public API dispatch
+# ===========================================================================
+
+if _HAS_OPENSSL:
+    aes_ecb_encrypt = _ssl_aes_ecb_encrypt
+    aes_ecb_decrypt = _ssl_aes_ecb_decrypt
+    aes_cbc_encrypt = _ssl_aes_cbc_encrypt
+    aes_cbc_decrypt = _ssl_aes_cbc_decrypt
+    aes_ctr_encrypt = _ssl_aes_ctr_encrypt
+    aes_ctr_decrypt = _ssl_aes_ctr_decrypt
+    aes_gcm_encrypt = _ssl_aes_gcm_encrypt
+    aes_gcm_decrypt = _ssl_aes_gcm_decrypt
+    BACKEND: str = "openssl"
+else:
+    aes_ecb_encrypt = _py_aes_ecb_encrypt
+    aes_ecb_decrypt = _py_aes_ecb_decrypt
+    aes_cbc_encrypt = _py_aes_cbc_encrypt
+    aes_cbc_decrypt = _py_aes_cbc_decrypt
+    aes_ctr_encrypt = _py_aes_ctr_encrypt
+    aes_ctr_decrypt = _py_aes_ctr_decrypt
+    aes_gcm_encrypt = _py_aes_gcm_encrypt
+    aes_gcm_decrypt = _py_aes_gcm_decrypt
+    BACKEND: str = "python"  # type: ignore[no-redef]
+
+# Backward compatibility aliases
+aes128_ecb_encrypt = aes_ecb_encrypt
+aes128_ecb_decrypt = aes_ecb_decrypt

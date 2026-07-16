@@ -1,8 +1,9 @@
 # /// zerodep
-# version = "0.3.0"
-# deps = []
+# version = "0.3.3"
+# deps = ["png"]
 # tier = "simple"
-# category = "utility"
+# category = "image"
+# note = "Install/update via: https://zerodep.readthedocs.io/en/latest/guide/cli/"
 # ///
 
 """QR Code generator library (Python).
@@ -10,25 +11,371 @@
 Part of zerodep: https://github.com/Oaklight/zerodep
 Copyright (c) 2026 Peng Ding. MIT License.
 
-Based on Project Nayuki's QR Code generator (MIT License):
+Originally derived from Project Nayuki's QR Code generator (MIT License),
+substantially refactored for the zerodep project:
     Copyright (c) Project Nayuki
     https://www.nayuki.io/page/qr-code-generator-library
 """
 
 from __future__ import annotations
 
-import collections
 import itertools
+import os
 import re
-from collections.abc import Sequence
+import sys
+from collections.abc import Callable, Sequence
 from typing import Union
+
+# ---- Precomputed GF(2^8) tables for Reed-Solomon ----
+# Primitive polynomial: x^8 + x^4 + x^3 + x^2 + 1 (0x11D)
+
+_GF_EXP: list[int] = [0] * 512  # Anti-log table: _GF_EXP[i] = 2^i mod 0x11D
+_GF_LOG: list[int] = [0] * 256  # Log table: _GF_LOG[_GF_EXP[i]] = i
+
+
+def _init_gf_tables() -> None:
+    """Initialize GF(2^8) exp/log lookup tables at module load time."""
+    x = 1
+    for i in range(255):
+        _GF_EXP[i] = x
+        _GF_LOG[x] = i
+        x = (x << 1) ^ ((x >> 7) * 0x11D)
+    # Extend exp table for easy modular access: EXP[i+j] without % 255
+    for i in range(255, 512):
+        _GF_EXP[i] = _GF_EXP[i - 255]
+
+
+_init_gf_tables()
+
+# Precomputed 256x256 GF multiplication table (64 KB, much faster than function calls)
+_GF_MUL: list[list[int]] = [[0] * 256 for _ in range(256)]
+
+
+def _init_gf_mul_table() -> None:
+    """Precompute full GF(2^8) multiplication table."""
+    for x in range(1, 256):
+        lx = _GF_LOG[x]
+        row = _GF_MUL[x]
+        for y in range(1, 256):
+            row[y] = _GF_EXP[lx + _GF_LOG[y]]
+
+
+_init_gf_mul_table()
 
 __all__ = [
     "QrCode",
     "QrSegment",
     "DataTooLongError",
     "print_qr_terminal",
+    "qr_to_svg",
+    "qr_to_png",
 ]
+
+
+# ---- Mask grid precomputation ----
+
+
+def _build_mask_grids(isfunction: list[bytearray], size: int) -> list[list[bytearray]]:
+    """Precompute mask XOR grids for all 8 mask patterns.
+
+    Each grid stores 1 for data cells where the mask condition is true and
+    0 elsewhere (including function cells). This allows mask application by
+    simple XOR without per-pixel arithmetic or isfunction checks.
+
+    Args:
+        isfunction: Grid marking function modules (not subject to masking).
+        size: Width/height of the QR code.
+
+    Returns:
+        A list of 8 grids (list of bytearray), one per mask pattern.
+    """
+    grids: list[list[bytearray]] = [
+        [bytearray(size) for _ in range(size)] for _ in range(8)
+    ]
+    for y in range(size):
+        isfunc_y = isfunction[y]
+        grows = [grids[m][y] for m in range(8)]
+        for x in range(size):
+            if not isfunc_y[x]:
+                _fill_mask_pixel(grows, x, y)
+    return grids
+
+
+def _fill_mask_pixel(grows: list[bytearray], x: int, y: int) -> None:
+    """Compute and store all 8 mask pattern values for one pixel.
+
+    Args:
+        grows: List of 8 bytearray rows (one per mask pattern) to fill.
+        x: Horizontal coordinate.
+        y: Vertical coordinate.
+    """
+    xy = x * y
+    grows[0][x] = 1 if (x + y) % 2 == 0 else 0
+    grows[1][x] = 1 if y % 2 == 0 else 0
+    grows[2][x] = 1 if x % 3 == 0 else 0
+    grows[3][x] = 1 if (x + y) % 3 == 0 else 0
+    grows[4][x] = 1 if (x // 3 + y // 2) % 2 == 0 else 0
+    grows[5][x] = 1 if xy % 2 + xy % 3 == 0 else 0
+    grows[6][x] = 1 if (xy % 2 + xy % 3) % 2 == 0 else 0
+    grows[7][x] = 1 if ((x + y) % 2 + xy % 3) % 2 == 0 else 0
+
+
+def _apply_precomputed_mask(
+    modules: list[bytearray], mask_grid: list[bytearray], size: int
+) -> None:
+    """Apply a precomputed mask grid to modules via bulk row XOR.
+
+    Uses int.from_bytes for efficient whole-row XOR instead of
+    element-by-element iteration.
+
+    Args:
+        modules: The QR code module grid to mask in place.
+        mask_grid: Precomputed XOR values for one mask pattern.
+        size: Width/height of the QR code.
+    """
+    for y in range(size):
+        row_int = int.from_bytes(modules[y], "big")
+        mask_int = int.from_bytes(mask_grid[y], "big")
+        result_bytes = (row_int ^ mask_int).to_bytes(size, "big")
+        modules[y] = bytearray(result_bytes)
+
+
+# ---- Penalty scoring helpers (module-level for performance) ----
+
+
+def _penalty_line_score(
+    line: bytearray, size: int, penalty_n1: int, penalty_n3: int
+) -> int:
+    """Compute run-length and finder-pattern penalty for a single line.
+
+    Evaluates adjacent same-color runs (rule 1) and finder-like 1:1:3:1:1
+    patterns for one row or column of the QR code. Push/check logic is
+    inlined to avoid per-pixel function call overhead in the hot loop.
+
+    Args:
+        line: A bytearray of module values (0 or 1) for one line.
+        size: Length of the line.
+        penalty_n1: Penalty constant for run-length violations.
+        penalty_n3: Penalty constant for finder-like patterns.
+
+    Returns:
+        The penalty score for this line.
+    """
+    result = 0
+    runcolor = 0
+    runlen = 0
+    rh0 = rh1 = rh2 = rh3 = rh4 = rh5 = rh6 = 0
+    for i in range(size):
+        c = line[i]
+        if c == runcolor:
+            runlen += 1
+            if runlen == 5:
+                result += penalty_n1
+            elif runlen > 5:
+                result += 1
+            continue
+        # Color changed: push run into history
+        rl = runlen + size if rh0 == 0 else runlen
+        rh6, rh5, rh4, rh3, rh2, rh1, rh0 = rh5, rh4, rh3, rh2, rh1, rh0, rl
+        # Check for finder pattern (only after light runs)
+        if not runcolor:
+            result += _rh_finder_penalty(rh0, rh1, rh2, rh3, rh4, rh5, rh6, penalty_n3)
+        runcolor = c
+        runlen = 1
+    result += _terminate_line(
+        runcolor, runlen, rh0, rh1, rh2, rh3, rh4, rh5, rh6, size, penalty_n3
+    )
+    return result
+
+
+def _rh_finder_penalty(
+    rh0: int,
+    rh1: int,
+    rh2: int,
+    rh3: int,
+    rh4: int,
+    rh5: int,
+    rh6: int,
+    penalty_n3: int,
+) -> int:
+    """Check run history for finder-like patterns (1:1:3:1:1 ratio).
+
+    Called after a light run is pushed into the history. Checks both
+    orientations of the finder pattern (light border on left or right).
+
+    Args:
+        rh0-rh6: Run history values (newest to oldest).
+        penalty_n3: Penalty constant for finder patterns.
+
+    Returns:
+        Penalty points (0, penalty_n3, or 2*penalty_n3).
+    """
+    n = rh1
+    if n <= 0 or rh2 != n or rh4 != n or rh5 != n or rh3 != n * 3:
+        return 0
+    result = 0
+    if rh0 >= n * 4 and rh6 >= n:
+        result += penalty_n3
+    if rh6 >= n * 4 and rh0 >= n:
+        result += penalty_n3
+    return result
+
+
+def _terminate_line(
+    runcolor: int,
+    runlen: int,
+    rh0: int,
+    rh1: int,
+    rh2: int,
+    rh3: int,
+    rh4: int,
+    rh5: int,
+    rh6: int,
+    size: int,
+    penalty_n3: int,
+) -> int:
+    """Terminate a line and check for final finder patterns.
+
+    Called once at the end of each line to finalize the run history
+    and perform the final finder pattern check.
+
+    Args:
+        runcolor: Color of the current (last) run.
+        runlen: Length of the current (last) run.
+        rh0-rh6: Run history values.
+        size: QR code size (for border padding).
+        penalty_n3: Penalty constant for finder patterns.
+
+    Returns:
+        Penalty points from the final finder pattern check.
+    """
+    if runcolor:
+        rl = runlen + size if rh0 == 0 else runlen
+        rh6, rh5, rh4, rh3, rh2, rh1, rh0 = rh5, rh4, rh3, rh2, rh1, rh0, rl
+        runlen = 0
+    rl = runlen + size
+    if rh0 == 0:
+        rl += size
+    rh6, rh5, rh4, rh3, rh2, rh1, rh0 = rh5, rh4, rh3, rh2, rh1, rh0, rl
+    return _rh_finder_penalty(rh0, rh1, rh2, rh3, rh4, rh5, rh6, penalty_n3)
+
+
+def _compute_penalty_rows(
+    modules: list[bytearray],
+    size: int,
+    penalty_n1: int,
+    penalty_n2: int,
+    penalty_n3: int,
+) -> tuple[int, int]:
+    """Compute row-direction penalties (rule 1 runs, finder, 2x2 blocks, dark count).
+
+    Evaluates horizontal run-length penalties, finder-like patterns (rule 1),
+    2x2 same-color block penalties (rule 3), and counts dark modules (rule 4)
+    in a single pass over rows.
+
+    Args:
+        modules: The QR code module grid.
+        size: The size (width/height) of the QR code.
+        penalty_n1: Penalty constant for run-length violations.
+        penalty_n2: Penalty constant for 2x2 block violations.
+        penalty_n3: Penalty constant for finder-like patterns.
+
+    Returns:
+        A tuple of (penalty_score, dark_count).
+    """
+    result = 0
+    dark = 0
+    prev_row = None
+
+    for y in range(size):
+        row = modules[y]
+        dark += sum(row)
+        result += _penalty_line_score(row, size, penalty_n1, penalty_n3)
+
+        # Rule 3: 2x2 blocks (compare with previous row)
+        if prev_row is not None:
+            for x in range(size - 1):
+                c = row[x]
+                if c == row[x + 1] == prev_row[x] == prev_row[x + 1]:
+                    result += penalty_n2
+        prev_row = row
+
+    return result, dark
+
+
+def _compute_penalty_lines(
+    lines: list[bytearray],
+    size: int,
+    penalty_n1: int,
+    penalty_n3: int,
+) -> int:
+    """Compute run-length and finder-pattern penalties for a set of lines.
+
+    Used for both row and column penalties — for columns, the caller
+    transposes the grid first so this function always iterates row-major.
+
+    Args:
+        lines: List of bytearrays representing lines to evaluate.
+        size: Length of each line.
+        penalty_n1: Penalty constant for run-length violations.
+        penalty_n3: Penalty constant for finder-like patterns.
+
+    Returns:
+        The line penalty score.
+    """
+    result = 0
+    for line in lines:
+        result += _penalty_line_score(line, size, penalty_n1, penalty_n3)
+    return result
+
+
+def _compute_penalty(
+    modules: list[bytearray],
+    size: int,
+    penalty_n1: int,
+    penalty_n2: int,
+    penalty_n3: int,
+    penalty_n4: int,
+) -> int:
+    """Compute the total penalty score for a QR code module grid.
+
+    Combines all four penalty rules:
+    - Rule 1: Adjacent modules in rows/columns with same color (runs of 5+).
+    - Rule 2: Finder-like patterns in rows and columns (1:1:3:1:1 ratio).
+    - Rule 3: 2x2 blocks of modules having same color.
+    - Rule 4: Imbalance of dark and light modules.
+
+    Transposes the module grid for the column pass so that column iteration
+    uses contiguous memory access patterns.
+
+    Args:
+        modules: The QR code module grid.
+        size: The size (width/height) of the QR code.
+        penalty_n1: Penalty constant for run-length violations.
+        penalty_n2: Penalty constant for 2x2 block violations.
+        penalty_n3: Penalty constant for finder-like patterns.
+        penalty_n4: Penalty constant for dark/light imbalance.
+
+    Returns:
+        The total penalty score.
+    """
+    # Row pass: horizontal runs, finder patterns, 2x2 blocks, dark count
+    result, dark = _compute_penalty_rows(
+        modules, size, penalty_n1, penalty_n2, penalty_n3
+    )
+    # Transpose for column pass: reuse row logic on transposed grid.
+    columns = [bytearray(size) for _ in range(size)]
+    for y in range(size):
+        row = modules[y]
+        for x in range(size):
+            columns[x][y] = row[x]
+    result += _compute_penalty_lines(columns, size, penalty_n1, penalty_n3)
+    # Rule 4: dark/light imbalance
+    total = size * size
+    k = (abs(dark * 20 - total * 10) + total - 1) // total - 1
+    result += k * penalty_n4
+    return result
+
 
 # ---- QR Code symbol class ----
 
@@ -149,9 +496,7 @@ class QrCode:
             bb.append_bits(padbyte, 8)
 
         # Pack bits into bytes in big endian
-        datacodewords = bytearray([0] * (len(bb) // 8))
-        for i, bit in enumerate(bb):
-            datacodewords[i >> 3] |= bit << (7 - (i & 7))
+        datacodewords = bb.pack_to_bytes()
 
         # Create the QR Code object
         return QrCode(version, ecl, datacodewords, mask)
@@ -174,12 +519,14 @@ class QrCode:
     # the resulting object still has a mask value between 0 and 7.
     _mask: int
 
-    # The modules of this QR Code (False = light, True = dark).
+    # The modules of this QR Code (0 = light, 1 = dark).
+    # Stored as list of bytearrays for compact memory and fast iteration.
     # Immutable after constructor finishes. Accessed through get_module().
-    _modules: list[list[bool]]
+    _modules: list[bytearray]
 
-    # Indicates function modules that are not subjected to masking. Discarded when constructor finishes.
-    _isfunction: list[list[bool]]
+    # Indicates function modules that are not subjected to masking.
+    # Stored as list of bytearrays. Discarded when constructor finishes.
+    _isfunction: list[bytearray]
 
     # ---- Constructor (low level) ----
 
@@ -205,11 +552,11 @@ class QrCode:
         self._size = version * 4 + 17
         self._errcorlvl = errcorlvl
 
-        # Initialize both grids to be size*size arrays of Boolean false
+        # Initialize both grids to be size*size arrays of 0 (light)
         self._modules = [
-            [False] * self._size for _ in range(self._size)
+            bytearray(self._size) for _ in range(self._size)
         ]  # Initially all light
-        self._isfunction = [[False] * self._size for _ in range(self._size)]
+        self._isfunction = [bytearray(self._size) for _ in range(self._size)]
 
         # Compute ECC, draw modules
         self._draw_function_patterns()
@@ -218,18 +565,26 @@ class QrCode:
 
         # Do masking
         if msk == -1:  # Automatically choose best mask
+            # Precompute mask grids to avoid per-pixel arithmetic and
+            # isfunction checks during the 8-mask evaluation loop
+            mask_grids = _build_mask_grids(self._isfunction, self._size)
             minpenalty: int = 1 << 32
             for i in range(8):
-                self._apply_mask(i)
+                _apply_precomputed_mask(self._modules, mask_grids[i], self._size)
                 self._draw_format_bits(i)
                 penalty = self._get_penalty_score()
                 if penalty < minpenalty:
                     msk = i
                     minpenalty = penalty
-                self._apply_mask(i)  # Undoes the mask due to XOR
-        assert 0 <= msk <= 7
-        self._mask = msk
-        self._apply_mask(msk)  # Apply the final choice of mask
+                _apply_precomputed_mask(
+                    self._modules, mask_grids[i], self._size
+                )  # Undoes the mask due to XOR
+            assert 0 <= msk <= 7
+            self._mask = msk
+            _apply_precomputed_mask(self._modules, mask_grids[msk], self._size)
+        else:
+            self._mask = msk
+            self._apply_mask(msk)  # Apply the specified mask
         self._draw_format_bits(msk)  # Overwrite old format bits
 
         del self._isfunction
@@ -256,7 +611,9 @@ class QrCode:
         """Returns the color of the module (pixel) at the given coordinates, which is False
         for light or True for dark. The top left corner has the coordinates (x=0, y=0).
         If the given coordinates are out of bounds, then False (light) is returned."""
-        return (0 <= x < self._size) and (0 <= y < self._size) and self._modules[y][x]
+        return (
+            (0 <= x < self._size) and (0 <= y < self._size) and self._modules[y][x] != 0
+        )
 
     # ---- Private helper methods for constructor: Drawing function modules ----
 
@@ -304,21 +661,26 @@ class QrCode:
         bits: int = (data << 10 | rem) ^ 0x5412  # uint15
         assert bits >> 15 == 0
 
+        # Inline module writes to avoid _set_function_module call overhead.
+        # These cells are all function modules, so isfunction is already set.
+        modules = self._modules
+        size = self._size
+
         # Draw first copy
         for i in range(0, 6):
-            self._set_function_module(8, i, _get_bit(bits, i))
-        self._set_function_module(8, 7, _get_bit(bits, 6))
-        self._set_function_module(8, 8, _get_bit(bits, 7))
-        self._set_function_module(7, 8, _get_bit(bits, 8))
+            modules[i][8] = (bits >> i) & 1
+        modules[7][8] = (bits >> 6) & 1
+        modules[8][8] = (bits >> 7) & 1
+        modules[8][7] = (bits >> 8) & 1
         for i in range(9, 15):
-            self._set_function_module(14 - i, 8, _get_bit(bits, i))
+            modules[8][14 - i] = (bits >> i) & 1
 
         # Draw second copy
         for i in range(0, 8):
-            self._set_function_module(self._size - 1 - i, 8, _get_bit(bits, i))
+            modules[8][size - 1 - i] = (bits >> i) & 1
         for i in range(8, 15):
-            self._set_function_module(8, self._size - 15 + i, _get_bit(bits, i))
-        self._set_function_module(8, self._size - 8, True)  # Always dark
+            modules[size - 15 + i][8] = (bits >> i) & 1
+        modules[size - 8][8] = 1  # Always dark
 
     def _draw_version(self) -> None:
         """Draws two copies of the version bits (with its own error correction code),
@@ -335,7 +697,7 @@ class QrCode:
 
         # Draw two copies
         for i in range(18):
-            bit: bool = _get_bit(bits, i)
+            bit: int = _get_bit(bits, i)
             a: int = self._size - 11 + i % 3
             b: int = i // 3
             self._set_function_module(a, b, bit)
@@ -360,12 +722,11 @@ class QrCode:
             for dx in range(-2, 3):
                 self._set_function_module(x + dx, y + dy, max(abs(dx), abs(dy)) != 1)
 
-    def _set_function_module(self, x: int, y: int, isdark: bool) -> None:
+    def _set_function_module(self, x: int, y: int, isdark: int | bool) -> None:
         """Sets the color of a module and marks it as a function module.
         Only used by the constructor. Coordinates must be in bounds."""
-        assert type(isdark) is bool
-        self._modules[y][x] = isdark
-        self._isfunction[y][x] = True
+        self._modules[y][x] = 1 if isdark else 0
+        self._isfunction[y][x] = 1
 
     # ---- Private helper methods for constructor: Codewords and masking ----
 
@@ -417,117 +778,64 @@ class QrCode:
         assert len(data) == QrCode._get_num_raw_data_modules(self._version) // 8
 
         i: int = 0  # Bit index into the data
+        datalen8 = len(data) * 8
+        modules = self._modules
+        isfunction = self._isfunction
+        size = self._size
         # Do the funny zigzag scan
         for right in range(
-            self._size - 1, 0, -2
+            size - 1, 0, -2
         ):  # Index of right column in each column pair
             if right <= 6:
                 right -= 1
-            for vert in range(self._size):  # Vertical counter
+            for vert in range(size):  # Vertical counter
                 for j in range(2):
                     x: int = right - j  # Actual x coordinate
                     upward: bool = (right + 1) & 2 == 0
                     y: int = (
-                        (self._size - 1 - vert) if upward else vert
+                        (size - 1 - vert) if upward else vert
                     )  # Actual y coordinate
-                    if (not self._isfunction[y][x]) and (i < len(data) * 8):
-                        self._modules[y][x] = _get_bit(data[i >> 3], 7 - (i & 7))
+                    if (not isfunction[y][x]) and (i < datalen8):
+                        modules[y][x] = (data[i >> 3] >> (7 - (i & 7))) & 1
                         i += 1
                     # If this QR Code has any remainder bits (0 to 7), they were assigned as
                     # 0/false/light by the constructor and are left unchanged by this method
-        assert i == len(data) * 8
+        assert i == datalen8
 
     def _apply_mask(self, mask: int) -> None:
         """XORs the codeword modules in this QR Code with the given mask pattern.
+
+        Used when a specific mask is requested (not auto-select). For auto-select,
+        precomputed mask grids are used instead for better performance.
+
         The function modules must be marked and the codeword bits must be drawn
         before masking. Due to the arithmetic of XOR, calling _apply_mask() with
         the same mask value a second time will undo the mask. A final well-formed
-        QR Code needs exactly one (not zero, two, etc.) mask applied."""
+        QR Code needs exactly one (not zero, two, etc.) mask applied.
+        """
         if not (0 <= mask <= 7):
             raise ValueError("Mask value out of range")
-        masker: collections.abc.Callable[[int, int], int] = QrCode._MASK_PATTERNS[mask]
-        for y in range(self._size):
-            for x in range(self._size):
-                self._modules[y][x] ^= (masker(x, y) == 0) and (
-                    not self._isfunction[y][x]
-                )
+        grids = _build_mask_grids(self._isfunction, self._size)
+        _apply_precomputed_mask(self._modules, grids[mask], self._size)
 
     def _get_penalty_score(self) -> int:
         """Calculates and returns the penalty score based on state of this QR Code's current modules.
-        This is used by the automatic mask choice algorithm to find the mask pattern that yields the lowest score."""
-        result: int = 0
-        size: int = self._size
-        modules: list[list[bool]] = self._modules
 
-        # Adjacent modules in row having same color, and finder-like patterns
-        for y in range(size):
-            runcolor: bool = False
-            runx: int = 0
-            runhistory = collections.deque([0] * 7, 7)
-            for x in range(size):
-                if modules[y][x] == runcolor:
-                    runx += 1
-                    if runx == 5:
-                        result += QrCode._PENALTY_N1
-                    elif runx > 5:
-                        result += 1
-                else:
-                    self._finder_penalty_add_history(runx, runhistory)
-                    if not runcolor:
-                        result += (
-                            self._finder_penalty_count_patterns(runhistory)
-                            * QrCode._PENALTY_N3
-                        )
-                    runcolor = modules[y][x]
-                    runx = 1
-            result += (
-                self._finder_penalty_terminate_and_count(runcolor, runx, runhistory)
-                * QrCode._PENALTY_N3
-            )
-        # Adjacent modules in column having same color, and finder-like patterns
-        for x in range(size):
-            runcolor = False
-            runy: int = 0
-            runhistory = collections.deque([0] * 7, 7)
-            for y in range(size):
-                if modules[y][x] == runcolor:
-                    runy += 1
-                    if runy == 5:
-                        result += QrCode._PENALTY_N1
-                    elif runy > 5:
-                        result += 1
-                else:
-                    self._finder_penalty_add_history(runy, runhistory)
-                    if not runcolor:
-                        result += (
-                            self._finder_penalty_count_patterns(runhistory)
-                            * QrCode._PENALTY_N3
-                        )
-                    runcolor = modules[y][x]
-                    runy = 1
-            result += (
-                self._finder_penalty_terminate_and_count(runcolor, runy, runhistory)
-                * QrCode._PENALTY_N3
-            )
+        Merges all four penalty rules into a single grid traversal to minimize
+        iteration overhead. Maintains per-column state to compute vertical
+        penalties during the row-major pass.
 
-        # 2*2 blocks of modules having same color
-        for y in range(size - 1):
-            for x in range(size - 1):
-                if (
-                    modules[y][x]
-                    == modules[y][x + 1]
-                    == modules[y + 1][x]
-                    == modules[y + 1][x + 1]
-                ):
-                    result += QrCode._PENALTY_N2
-
-        # Balance of dark and light modules
-        dark: int = sum((1 if cell else 0) for row in modules for cell in row)
-        total: int = size**2  # Note that size is odd, so dark/total != 1/2
-        # Compute the smallest integer k >= 0 such that (45-5k)% <= dark/total <= (55+5k)%
-        k: int = (abs(dark * 20 - total * 10) + total - 1) // total - 1
-        assert 0 <= k <= 9
-        result += k * QrCode._PENALTY_N4
+        This is used by the automatic mask choice algorithm to find the mask
+        pattern that yields the lowest score.
+        """
+        result: int = _compute_penalty(
+            self._modules,
+            self._size,
+            QrCode._PENALTY_N1,
+            QrCode._PENALTY_N2,
+            QrCode._PENALTY_N3,
+            QrCode._PENALTY_N4,
+        )
         assert (
             0 <= result <= 2568888
         )  # Non-tight upper bound based on default values of PENALTY_N1, ..., N4
@@ -590,74 +898,37 @@ class QrCode:
         # and drop the highest monomial term which is always 1x^degree.
         # Note that r = 0x02, which is a generator element of this field GF(2^8/0x11D).
         root: int = 1
+        gf_mul = _GF_MUL
         for _ in range(degree):  # Unused variable i
             # Multiply the current product by (x - r^i)
+            root_row = gf_mul[root]
             for j in range(degree):
-                result[j] = QrCode._reed_solomon_multiply(result[j], root)
+                result[j] = root_row[result[j]]
                 if j + 1 < degree:
                     result[j] ^= result[j + 1]
-            root = QrCode._reed_solomon_multiply(root, 0x02)
+            root = gf_mul[root][0x02]
         return bytes(result)
 
     @staticmethod
     def _reed_solomon_compute_remainder(data: bytes, divisor: bytes) -> bytes:
         """Returns the Reed-Solomon error correction codeword for the given data and divisor polynomials."""
         result = bytearray([0] * len(divisor))
+        gf_mul = _GF_MUL
         for b in data:  # Polynomial division
-            factor: int = b ^ result.pop(0)
+            factor: int = b ^ result[0]
+            del result[0]
             result.append(0)
-            for i, coef in enumerate(divisor):
-                result[i] ^= QrCode._reed_solomon_multiply(coef, factor)
+            if factor != 0:
+                factor_row = gf_mul[factor]
+                for i, coef in enumerate(divisor):
+                    result[i] ^= factor_row[coef]
         return bytes(result)
 
     @staticmethod
     def _reed_solomon_multiply(x: int, y: int) -> int:
         """Returns the product of the two given field elements modulo GF(2^8/0x11D). The arguments and result
-        are unsigned 8-bit integers. This could be implemented as a lookup table of 256*256 entries of uint8."""
-        if (x >> 8 != 0) or (y >> 8 != 0):
-            raise ValueError("Byte out of range")
-        # Russian peasant multiplication
-        z: int = 0
-        for i in reversed(range(8)):
-            z = (z << 1) ^ ((z >> 7) * 0x11D)
-            z ^= ((y >> i) & 1) * x
-        assert z >> 8 == 0
-        return z
-
-    def _finder_penalty_count_patterns(self, runhistory: collections.deque[int]) -> int:
-        """Can only be called immediately after a light run is added, and
-        returns either 0, 1, or 2. A helper function for _get_penalty_score()."""
-        n: int = runhistory[1]
-        assert n <= self._size * 3
-        core: bool = (
-            n > 0
-            and (runhistory[2] == runhistory[4] == runhistory[5] == n)
-            and runhistory[3] == n * 3
-        )
-        return (
-            1 if (core and runhistory[0] >= n * 4 and runhistory[6] >= n) else 0
-        ) + (1 if (core and runhistory[6] >= n * 4 and runhistory[0] >= n) else 0)
-
-    def _finder_penalty_terminate_and_count(
-        self,
-        currentruncolor: bool,
-        currentrunlength: int,
-        runhistory: collections.deque[int],
-    ) -> int:
-        """Must be called at the end of a line (row or column) of modules. A helper function for _get_penalty_score()."""
-        if currentruncolor:  # Terminate dark run
-            self._finder_penalty_add_history(currentrunlength, runhistory)
-            currentrunlength = 0
-        currentrunlength += self._size  # Add light border to final run
-        self._finder_penalty_add_history(currentrunlength, runhistory)
-        return self._finder_penalty_count_patterns(runhistory)
-
-    def _finder_penalty_add_history(
-        self, currentrunlength: int, runhistory: collections.deque[int]
-    ) -> None:
-        if runhistory[0] == 0:
-            currentrunlength += self._size  # Add light border to initial run
-        runhistory.appendleft(currentrunlength)
+        are unsigned 8-bit integers. Uses precomputed lookup table for O(1) performance."""
+        return _GF_MUL[x][y]
 
     # ---- Constants and tables ----
 
@@ -1028,7 +1299,7 @@ class QrCode:
         ),
     )  # High
 
-    _MASK_PATTERNS: Sequence[collections.abc.Callable[[int, int], int]] = (
+    _MASK_PATTERNS: Sequence[Callable[[int, int], int]] = (
         (lambda x, y: (x + y) % 2),
         (lambda x, y: y % 2),
         (lambda x, y: x % 3),
@@ -1183,12 +1454,15 @@ class QrSegment:
     _numchars: int
 
     # The data bits of this segment. Accessed through get_data().
-    _bitdata: list[int]
+    _bitdata: _BitBuffer
 
     # ---- Constructor (low level) ----
 
     def __init__(
-        self, mode: QrSegment.Mode, numch: int, bitdata: Sequence[int]
+        self,
+        mode: QrSegment.Mode,
+        numch: int,
+        bitdata: Union[_BitBuffer, Sequence[int]],
     ) -> None:
         """Creates a new QR Code segment with the given attributes and data.
         The character count (numch) must agree with the mode and the bit buffer length,
@@ -1197,7 +1471,14 @@ class QrSegment:
             raise ValueError()
         self._mode = mode
         self._numchars = numch
-        self._bitdata = list(bitdata)  # Make defensive copy
+        if isinstance(bitdata, _BitBuffer):
+            self._bitdata = _BitBuffer(bitdata._data, bitdata._length)
+        else:
+            bb = _BitBuffer()
+            for bit in bitdata:
+                bb._data = (bb._data << 1) | bit
+                bb._length += 1
+            self._bitdata = bb
 
     # ---- Accessor methods ----
 
@@ -1286,20 +1567,71 @@ class QrSegment:
 # ---- Private helper class ----
 
 
-class _BitBuffer(list[int]):
-    """An appendable sequence of bits (0s and 1s). Mainly used by QrSegment."""
+class _BitBuffer:
+    """An appendable sequence of bits (0s and 1s) stored as a single big integer.
+
+    Uses integer bit-shift operations instead of per-bit list elements to
+    minimize memory allocation and improve performance.
+    """
+
+    __slots__ = ("_data", "_length")
+
+    def __init__(self, data: int = 0, length: int = 0) -> None:
+        self._data: int = data
+        self._length: int = length
 
     def append_bits(self, val: int, n: int) -> None:
         """Appends the given number of low-order bits of the given
         value to this buffer. Requires n >= 0 and 0 <= val < 2^n."""
         if (n < 0) or (val >> n != 0):
             raise ValueError("Value out of range")
-        self.extend(((val >> i) & 1) for i in reversed(range(n)))
+        self._data = (self._data << n) | val
+        self._length += n
+
+    def extend(self, bits: Union[_BitBuffer, Sequence[int]]) -> None:
+        """Appends each bit (0 or 1) from the iterable to this buffer."""
+        if isinstance(bits, _BitBuffer):
+            # Fast path: merge two _BitBuffers using bit operations
+            self._data = (self._data << bits._length) | bits._data
+            self._length += bits._length
+        else:
+            data = self._data
+            length = self._length
+            for b in bits:
+                data = (data << 1) | b
+                length += 1
+            self._data = data
+            self._length = length
+
+    def __len__(self) -> int:
+        return self._length
+
+    def __iter__(self):  # type: ignore[override]
+        """Iterates bits from MSB to LSB."""
+        data = self._data
+        for i in range(self._length - 1, -1, -1):
+            yield (data >> i) & 1
+
+    def pack_to_bytes(self) -> bytearray:
+        """Packs bits into bytes in big-endian order (MSB first).
+
+        Returns:
+            A bytearray where each byte contains 8 consecutive bits.
+            The buffer length must be a multiple of 8.
+        """
+        length = self._length
+        data = self._data
+        num_bytes = length >> 3
+        result = bytearray(num_bytes)
+        for i in range(num_bytes - 1, -1, -1):
+            result[i] = data & 0xFF
+            data >>= 8
+        return result
 
 
-def _get_bit(x: int, i: int) -> bool:
-    """Returns true iff the i'th bit of x is set to 1."""
-    return (x >> i) & 1 != 0
+def _get_bit(x: int, i: int) -> int:
+    """Returns 1 if the i'th bit of x is set, 0 otherwise."""
+    return (x >> i) & 1
 
 
 class DataTooLongError(ValueError):
@@ -1352,3 +1684,136 @@ def print_qr_terminal(text: str) -> None:
         lines.append("".join(row_chars))
 
     print("\n".join(lines))
+
+
+# ---- Sibling import helpers ----
+
+
+def _ensure_sibling_path(name: str) -> str:
+    """Return the sibling module directory and prepend it to ``sys.path``."""
+    sibling_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", name)
+    if sibling_dir not in sys.path:
+        sys.path.insert(0, sibling_dir)
+    return sibling_dir
+
+
+def _load_png_encoder():
+    """Load sibling ``png`` module's ``Image`` and ``encode_png`` on demand."""
+    _ensure_sibling_path("png")
+    sys.modules.pop("png", None)
+    try:
+        from png import Image, encode_png
+    except ImportError as exc:
+        raise ImportError(
+            "qr_to_png requires the sibling png module. "
+            "Copy png/png.py into your project."
+        ) from exc
+    return Image, encode_png
+
+
+# ---- Image output ----
+
+
+def qr_to_svg(
+    qr: QrCode,
+    dest: str | os.PathLike[str] | None = None,
+    *,
+    scale: int = 10,
+    border: int = 4,
+    fg_color: str = "#000000",
+    bg_color: str = "#ffffff",
+) -> str | None:
+    """Render a QR Code as an SVG image.
+
+    Args:
+        qr: QR Code to render.
+        dest: File path to write SVG to, or ``None`` to return the SVG string.
+        scale: Size of each QR module in SVG user units.
+        border: Width of the quiet zone in QR modules.
+        fg_color: CSS color for dark modules.
+        bg_color: CSS color for light modules.
+
+    Returns:
+        SVG string when *dest* is ``None``, otherwise ``None``.
+    """
+    size = qr.get_size()
+    total = (size + 2 * border) * scale
+
+    # Build a single <path> collecting all dark modules.
+    parts: list[str] = []
+    for y in range(size):
+        for x in range(size):
+            if qr.get_module(x, y):
+                px = (x + border) * scale
+                py = (y + border) * scale
+                parts.append(f"M{px},{py}h{scale}v{scale}h-{scale}z")
+    path_d = "".join(parts)
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {total} {total}" '
+        f'width="{total}" height="{total}">\n'
+        f'<rect width="100%" height="100%" fill="{bg_color}"/>\n'
+        f'<path d="{path_d}" fill="{fg_color}"/>\n'
+        f"</svg>\n"
+    )
+
+    if dest is None:
+        return svg
+    with open(dest, "w", encoding="utf-8") as fh:
+        fh.write(svg)
+    return None
+
+
+def qr_to_png(
+    qr: QrCode,
+    dest: str | os.PathLike[str] | None = None,
+    *,
+    scale: int = 10,
+    border: int = 4,
+    fg_color: int = 0,
+    bg_color: int = 255,
+) -> bytes | None:
+    """Render a QR Code as a PNG image.
+
+    Requires the sibling ``png`` module.
+
+    Args:
+        qr: QR Code to render.
+        dest: File path to write PNG to, or ``None`` to return PNG bytes.
+        scale: Pixels per QR module.
+        border: Width of the quiet zone in QR modules.
+        fg_color: Grayscale value (0--255) for dark modules.
+        bg_color: Grayscale value (0--255) for light modules.
+
+    Returns:
+        PNG bytes when *dest* is ``None``, otherwise ``None``.
+
+    Raises:
+        ImportError: If the sibling ``png`` module is not available.
+        ValueError: If *fg_color* or *bg_color* is outside 0--255.
+    """
+    if not (0 <= fg_color <= 255):
+        raise ValueError(f"fg_color must be 0-255, got {fg_color}")
+    if not (0 <= bg_color <= 255):
+        raise ValueError(f"bg_color must be 0-255, got {bg_color}")
+
+    Image, encode_png = _load_png_encoder()
+
+    size = qr.get_size()
+    total_px = (size + 2 * border) * scale
+
+    # Build grayscale pixel buffer.
+    fg_run = bytes([fg_color]) * scale
+    pixels = bytearray([bg_color]) * (total_px * total_px)
+    for y in range(size):
+        for x in range(size):
+            if qr.get_module(x, y):
+                px = (x + border) * scale
+                py = (y + border) * scale
+                for row in range(py, py + scale):
+                    offset = row * total_px + px
+                    pixels[offset : offset + scale] = fg_run
+
+    img = Image(width=total_px, height=total_px, data=bytes(pixels), mode="L")
+    return encode_png(img, dest)
