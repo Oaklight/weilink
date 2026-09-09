@@ -99,3 +99,6 @@ where = ["src"]
     "integrations/**/.claude-plugin/*.json",
 ]
 "weilink.admin" = ["*.html", "locales/*.json"]
+
+[tool.zerodep]
+vendor-dir = "src/weilink/_vendor"
